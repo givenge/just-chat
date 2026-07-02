@@ -1,0 +1,50 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+
+# Swift Package Manager
+.build/
+.swiftpm/
+Package.pins
+
+# Xcode
+DerivedData/
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+*.moved-aside
+*.xcresult
+*.xcarchive
+*.dSYM/
+*.app
+
+# Local editor and agent state
+.vscode/
+.idea/
+*.swp
+*.swo
+.codegraph/
+.claude/
+docs/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.cer
+*.crt
+*.key
+*.pem
+*.p12
+*.mobileprovision
+*.provisionprofile
+
+# Runtime data and logs
+*.log
+*.db
+*.sqlite
+*.sqlite3
