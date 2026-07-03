@@ -34,11 +34,9 @@ struct TavilySearchService: Sendable {
         return payload.results.compactMap { item in
             guard let url = URL(string: item.url) else { return nil }
             return SearchResult(
-                id: UUID(),
                 title: item.title.trimmingCharacters(in: .whitespacesAndNewlines),
                 content: item.content.trimmingCharacters(in: .whitespacesAndNewlines),
-                url: url,
-                provider: "tavily"
+                url: url
             )
         }
     }

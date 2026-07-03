@@ -9,10 +9,8 @@ enum Defaults {
                 kind: .openAIResponses,
                 name: "OpenAI",
                 baseURL: URL(string: "https://api.openai.com/v1")!,
-                apiKeyName: "openai-primary",
                 models: ["gpt-5.4", "gpt-5.4-mini", "gpt-5.3"],
-                defaultModel: "gpt-5.4",
-                isEnabled: true
+                defaultModel: "gpt-5.4"
             ),
             ModelProvider(
                 id: UUID(uuidString: "00000000-0000-4000-8000-000000000102")!,
@@ -20,10 +18,8 @@ enum Defaults {
                 kind: .openAIChatCompletions,
                 name: "New API",
                 baseURL: URL(string: "https://newapi.example.com/v1")!,
-                apiKeyName: "newapi-primary",
                 models: ["gpt-5.4-mini", "gpt-5.3"],
-                defaultModel: "gpt-5.4-mini",
-                isEnabled: true
+                defaultModel: "gpt-5.4-mini"
             ),
             ModelProvider(
                 id: UUID(uuidString: "00000000-0000-4000-8000-000000000103")!,
@@ -31,10 +27,8 @@ enum Defaults {
                 kind: .anthropicMessages,
                 name: "Anthropic",
                 baseURL: URL(string: "https://api.anthropic.com/v1")!,
-                apiKeyName: "anthropic-primary",
                 models: ["claude-opus-4-5", "claude-sonnet-4-5"],
-                defaultModel: "claude-sonnet-4-5",
-                isEnabled: false
+                defaultModel: "claude-sonnet-4-5"
             )
         ]
     }
@@ -50,7 +44,6 @@ enum Defaults {
                 temperature: 0.7,
                 maxTokens: 4096,
                 isWebSearchEnabled: true,
-                isVisionEnabled: false,
                 quickTemplates: [
                     PromptTemplate(id: UUID(), title: "翻译", prompt: "翻译为简体中文，保持原意："),
                     PromptTemplate(id: UUID(), title: "总结", prompt: "用要点总结这段内容："),
@@ -66,7 +59,6 @@ enum Defaults {
                 temperature: 0.3,
                 maxTokens: 4096,
                 isWebSearchEnabled: false,
-                isVisionEnabled: false,
                 quickTemplates: [
                     PromptTemplate(id: UUID(), title: "翻译", prompt: "Translate to natural English:"),
                     PromptTemplate(id: UUID(), title: "润色", prompt: "Polish this English while keeping the meaning:")
@@ -81,7 +73,6 @@ enum Defaults {
                 temperature: 0.3,
                 maxTokens: 4096,
                 isWebSearchEnabled: false,
-                isVisionEnabled: false,
                 quickTemplates: [
                     PromptTemplate(id: UUID(), title: "翻译", prompt: "翻译为简体中文："),
                     PromptTemplate(id: UUID(), title: "解释", prompt: "翻译并解释关键术语：")
@@ -96,7 +87,6 @@ enum Defaults {
                 temperature: 0.5,
                 maxTokens: 4096,
                 isWebSearchEnabled: false,
-                isVisionEnabled: false,
                 quickTemplates: [
                     PromptTemplate(id: UUID(), title: "周报", prompt: "把以下内容整理成周报："),
                     PromptTemplate(id: UUID(), title: "计划", prompt: "根据这些记录提炼下周计划：")

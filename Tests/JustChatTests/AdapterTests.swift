@@ -10,10 +10,8 @@ final class AdapterTests: XCTestCase {
       kind: .openAIChatCompletions,
       name: "NewAPI",
       baseURL: URL(string: "https://newapi.example.com/v1")!,
-      apiKeyName: "newapi",
       models: ["mimo-v2.5"],
-      defaultModel: "mimo-v2.5",
-      isEnabled: true
+      defaultModel: "mimo-v2.5"
     )
     let assistant = AssistantProfile(
       id: UUID(),
@@ -24,7 +22,6 @@ final class AdapterTests: XCTestCase {
       temperature: 0.4,
       maxTokens: 1024,
       isWebSearchEnabled: true,
-      isVisionEnabled: false,
       quickTemplates: []
     )
     let message = ChatMessage(
@@ -72,10 +69,8 @@ final class AdapterTests: XCTestCase {
       kind: .openAIResponses,
       name: "OpenAI",
       baseURL: URL(string: "https://api.openai.com/v1")!,
-      apiKeyName: "openai",
       models: ["gpt-5.4"],
-      defaultModel: "gpt-5.4",
-      isEnabled: true
+      defaultModel: "gpt-5.4"
     )
     let assistant = AssistantProfile(
       id: UUID(),
@@ -86,7 +81,6 @@ final class AdapterTests: XCTestCase {
       temperature: 0.4,
       maxTokens: 1024,
       isWebSearchEnabled: true,
-      isVisionEnabled: false,
       quickTemplates: []
     )
     let message = ChatMessage(
@@ -507,10 +501,8 @@ private func testProvider(
       ?? URL(
         string: kind == .anthropicMessages
           ? "https://api.anthropic.com/v1" : "https://api.openai.com/v1")!,
-    apiKeyName: "key",
     models: ["model"],
-    defaultModel: "model",
-    isEnabled: true
+    defaultModel: "model"
   )
 }
 
@@ -530,7 +522,6 @@ private func testAssistant(
     temperature: 0.4,
     maxTokens: maxTokens,
     isWebSearchEnabled: true,
-    isVisionEnabled: false,
     reasoningEffort: reasoningEffort,
     quickTemplates: []
   )

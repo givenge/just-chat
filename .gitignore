@@ -10,6 +10,10 @@ Icon?
 .swiftpm/
 Package.pins
 
+# Generated app icon intermediates
+Resources/AppIcon.png
+Resources/AppIcon.iconset/
+
 # Xcode
 DerivedData/
 xcuserdata/

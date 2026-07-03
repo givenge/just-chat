@@ -38,18 +38,15 @@ Artifacts:
 
 Configuration:
 
-- Open **Settings -> 模型服务** and save API keys into Keychain accounts:
-  - `openai-primary`
-  - `anthropic-primary`
-- Open **Settings -> 网络搜索** and save the Tavily API key into:
-  - `tavily-primary`
-- Non-secret provider, assistant, conversation, message, and search settings are persisted in SQLite under Application Support.
+- Open **Settings -> 模型服务** and paste provider API keys directly into the provider cards.
+- Open **Settings -> 网络搜索** and paste the Tavily API key.
+- Providers, assistants, conversations, messages, search settings, app preferences, and API keys are persisted in SQLite under Application Support.
 
 Current implementation status:
 
 - Native SwiftUI/AppKit app shell with main chat window, settings, menu bar entry, Quick Assistant panel, and Selection Assistant panel.
 - SQLite persistence for conversations, messages, providers, assistants, and search settings.
-- Keychain persistence for API keys.
+- SQLite persistence for API keys.
 - Streaming request adapters for OpenAI Chat Completions, OpenAI Responses, and Anthropic Messages.
 - Tavily search request/response normalization and context injection for non-native search.
 - OpenAI Responses native `web_search` tool toggle.

@@ -210,15 +210,6 @@ private struct ProviderListRow: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                    if provider.isEnabled {
-                        Text("ON")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Color.justSuccess)
-                            .padding(.horizontal, 8)
-                            .frame(height: 22)
-                            .background(Color.justSuccess.opacity(0.14))
-                            .clipShape(Capsule())
-                    }
                 }
             }
             .padding(.horizontal, 12)
@@ -276,7 +267,7 @@ private struct AddProviderSheet: View {
                 Text("提供商类型")
                     .font(.system(size: 17, weight: .semibold))
                 Picker("提供商类型", selection: $providerType) {
-                    ForEach(ProviderCatalogType.allCases) { type in
+                    ForEach(ProviderCatalogType.allCases, id: \.self) { type in
                         Text(type.displayName).tag(type)
                     }
                 }
@@ -374,9 +365,6 @@ private struct ProviderDetailPane: View {
                 Image(systemName: "hexagon")
                     .foregroundStyle(.secondary)
                 Spacer()
-                Toggle("启用", isOn: providerEnabledBinding)
-                    .labelsHidden()
-                    .tint(Color.justAccent)
             }
 
             SettingsCard {
@@ -517,16 +505,6 @@ private struct ProviderDetailPane: View {
     private var modelIndices: [Int] {
         guard let providerIndex else { return [] }
         return Array(appState.providers[providerIndex].models.indices)
-    }
-
-    private var providerEnabledBinding: Binding<Bool> {
-        Binding(
-            get: { provider.isEnabled },
-            set: { value in
-                guard let providerIndex else { return }
-                appState.providers[providerIndex].isEnabled = value
-            }
-        )
     }
 
     private var baseURLBinding: Binding<String> {
@@ -1010,7 +988,7 @@ private struct ModelSelectionControl: View {
 
             controlColumn("思考等级", width: 130) {
                 Picker("思考等级", selection: $reasoningEffort) {
-                    ForEach(ReasoningEffort.allCases) { effort in
+                    ForEach(ReasoningEffort.allCases, id: \.self) { effort in
                         Text(effort.displayName).tag(effort)
                     }
                 }
@@ -1062,7 +1040,7 @@ private struct GeneralSettingsPane: View {
                     settingTitle("对话区", icon: "textformat.size")
                     HStack {
                         Text("字体大小")
-                        Slider(value: $appState.preferences.chatFontSize, in: 12...20, step: 1)
+                        Slider(value: $appState.preferences.chatFontSize, in: 12...20)
                             .tint(Color.justAccent)
                         Text("\(Int(appState.preferences.chatFontSize))")
                             .foregroundStyle(.secondary)
@@ -1070,7 +1048,7 @@ private struct GeneralSettingsPane: View {
                     }
                     HStack {
                         Text("侧栏宽度")
-                        Slider(value: $appState.preferences.homeSidebarWidth, in: 240...460, step: 1)
+                        Slider(value: $appState.preferences.homeSidebarWidth, in: 240...460)
                             .tint(Color.justAccent)
                         Text("\(Int(appState.preferences.homeSidebarWidth))")
                             .foregroundStyle(.secondary)
@@ -1244,12 +1222,6 @@ private struct SelectionAssistantSettingsPane: View {
             SettingsCard {
                 VStack(alignment: .leading, spacing: 16) {
                     settingTitle("工具栏", icon: "rectangle.compress.vertical")
-                    Picker("取词方式", selection: $appState.preferences.selectionTriggerMode) {
-                        ForEach(SelectionTriggerMode.allCases) { mode in
-                            Text(mode.rawValue).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
                     Toggle("紧凑模式", isOn: $appState.preferences.selectionCompactMode)
                         .tint(Color.justAccent)
                     LabeledContent("呼出快捷键", value: appState.preferences.selectionAssistantHotKey)
@@ -1261,8 +1233,6 @@ private struct SelectionAssistantSettingsPane: View {
             SettingsCard {
                 VStack(alignment: .leading, spacing: 14) {
                     settingTitle("功能窗口", icon: "rectangle.inset.filled")
-                    Toggle("跟随工具栏", isOn: $appState.preferences.selectionFollowToolbar)
-                        .tint(Color.justAccent)
                     Toggle("自动关闭", isOn: $appState.preferences.selectionAutoClose)
                         .tint(Color.justAccent)
                     Toggle("自动置顶", isOn: $appState.preferences.selectionAutoPin)
@@ -1298,7 +1268,7 @@ private struct DisplaySettingsPane: View {
                 VStack(alignment: .leading, spacing: 14) {
                     settingTitle("外观", icon: "circle.lefthalf.filled")
                     Picker("外观", selection: $appState.preferences.appearanceMode) {
-                        ForEach(AppearanceMode.allCases) { mode in
+                        ForEach(AppearanceMode.allCases, id: \.self) { mode in
                             Text(mode.rawValue).tag(mode)
                         }
                     }

@@ -1,5 +1,10 @@
 import Foundation
 
+struct SSEEvent: Equatable {
+  var event: String?
+  var data: String
+}
+
 protocol ChatModelAdapter: Sendable {
   var kind: ProviderKind { get }
   func makeRequest(_ request: ChatRequest, apiKey: String) throws -> URLRequest
@@ -210,7 +215,6 @@ struct OpenAIChatCompletionsAdapter: ChatModelAdapter {
       provider.name,
       provider.baseURL.host ?? "",
       provider.baseURL.absoluteString,
-      provider.apiKeyName,
     ].map { $0.lowercased() }
   }
 
@@ -483,16 +487,14 @@ extension ChatRequest {
   }
 }
 
-struct ChatAdapterFactory: Sendable {
-  func adapter(for kind: ProviderKind) -> ChatModelAdapter {
-    switch kind {
-    case .openAIChatCompletions:
-      OpenAIChatCompletionsAdapter()
-    case .openAIResponses:
-      OpenAIResponsesAdapter()
-    case .anthropicMessages:
-      AnthropicMessagesAdapter()
-    }
+func chatAdapter(for kind: ProviderKind) -> ChatModelAdapter {
+  switch kind {
+  case .openAIChatCompletions:
+    OpenAIChatCompletionsAdapter()
+  case .openAIResponses:
+    OpenAIResponsesAdapter()
+  case .anthropicMessages:
+    AnthropicMessagesAdapter()
   }
 }
 

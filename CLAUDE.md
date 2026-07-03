@@ -21,21 +21,21 @@ open .build/JustChat.app
 
 ## Architecture
 
-Just Chat is a native macOS AI chat client — a single Swift Package target (Swift 6, macOS 14+) using SwiftUI for the app shell and AppKit for floating panels, global hotkeys, and Keychain access. It has one external dependency: `apple/swift-markdown` (linked as the `Markdown` product) used for rendering model output.
+Just Chat is a native macOS AI chat client — a single Swift Package target (Swift 6, macOS 14+) using SwiftUI for the app shell and AppKit for floating panels and global hotkeys. It has one external dependency: `apple/swift-markdown` (linked as the `Markdown` product) used for rendering model output.
 
-**Entry point:** `JustChatApp.swift` — `@main` struct, creates `AppState` as a `@StateObject`, injects it via `.environmentObject`. Defines the main window, menu bar extra, and keyboard shortcuts.
+**Entry point:** `JustChatApp.swift` — `@main` struct, creates `AppState` as a `@StateObject`, injects it via `.environmentObject`. Defines the main window and menu bar extra (`MenuBarExtra`); a `CommandMenu` with toggle buttons for the Quick/Selection panels. Actual global hotkeys are registered via `GlobalHotKeyCenter.swift` (Carbon `RegisterEventHotKey`), wired through `AppState`.
 
 **Central state:** `AppState.swift` is the `@MainActor ObservableObject` that owns all domain state and orchestrates persistence, chat streaming, and panel presentation. It owns:
-- `SQLiteStore` — raw SQLite3 via `sqlite3.h` (no ORM). Stores conversations, messages, providers, assistants, search settings, and app preferences.
-- `KeychainStore` — macOS Keychain Services wrapper for API keys.
+- `SQLiteStore` — raw SQLite3 via `sqlite3.h` (no ORM). Stores conversations, messages, providers (including API keys in the `api_key` column), assistants, search settings, and app preferences.
 - `ChatSessionService` — created per-request; runs streaming chat with web search injection.
-- `QuickAssistantController` / `SelectionAssistantController` — `NSPanel`-based floating windows.
+- `QuickAssistantController` / `SelectionAssistantController` — `NSPanel`-based floating windows (defined in `Panels.swift`, not separate files).
+- `ChatStreamEventQueue` — lock-backed event queue that decouples adapter SSE emission from UI consumption on the main thread.
 
 **Request flow:**
 1. `AppState.sendMessage()` creates a user message, appends a streaming assistant message, builds a `ChatRequest`.
-2. `ChatSessionService.run()` optionally runs Tavily search, injects search context as a system message, then uses `ChatAdapterFactory` to get the correct adapter.
+2. `ChatSessionService.run()` optionally runs Tavily search, injects search context as a system message, then uses `chatAdapter(for:)` to get the correct adapter.
 3. The adapter (`ChatModelAdapter` protocol) builds a provider-specific `URLRequest` and parses SSE events into `ChatStreamEvent` enum values (`.delta`, `.reasoningDelta`, `.citation`, `.usage`, `.completed`).
-4. `SSEParser` is a standalone parser that splits raw SSE text into `SSEEvent` structs.
+4. `ChatSessionService` parses streaming SSE lines into `SSEEvent` structs before handing them to the adapter.
 
 **Three adapters** in `ChatModelAdapters.swift`:
 - `OpenAIChatCompletionsAdapter` — `/v1/chat/completions`, classic `choices[0].delta.content` SSE parsing.
@@ -47,7 +47,7 @@ Just Chat is a native macOS AI chat client — a single Swift Package target (Sw
 - `.tavily` — `TavilySearchService` calls Tavily API, results injected as a system message at position 0.
 - `.providerNative` — only for OpenAI Responses, adds `tools: [{"type": "web_search"}]` to the request body.
 
-**Data model** (`Models.swift`): All model types are `Codable`, `Hashable`, `Sendable` structs with `Identifiable` (UUID ids). Key types: `Conversation`, `ChatMessage` (note: has both `content` and `reasoningContent`), `AssistantProfile`, `ModelProvider` (carries both `providerType: ProviderCatalogType` for catalog/display and `kind: ProviderKind` for the request API), `SearchSettings`, `AppPreferences`, `Citation`, `TokenUsage`. `ProviderCatalogType` enumerates provider brands (openAI, anthropic, gemini, ollama, …) and provides default base URL, models, and keychain account name; `ProviderKind` is the actual API shape (openAIChatCompletions, openAIResponses, anthropicMessages).
+**Data model** (`Models.swift`): Model types are `Codable`/`Sendable`, with `Equatable` or `Identifiable` only where call sites need it. Key types: `Conversation`, `ChatMessage` (note: has both `content` and `reasoningContent`), `AssistantProfile`, `ModelProvider` (carries both `providerType: ProviderCatalogType` for catalog/display and `kind: ProviderKind` for the request API), `SearchSettings`, `AppPreferences`, `Citation`, `TokenUsage`. `ProviderCatalogType` enumerates provider brands (openAI, openAIResponse, anthropic, gemini, azureOpenAI, newAPI, cherryIN, ollama) and provides default base URL and models; `ProviderKind` is the actual API shape (openAIChatCompletions, OpenAI Responses, Anthropic Messages).
 
 **Navigation:** `RootSection` is `.home` / `.settings` — there is no top nav bar. The home sidebar has a **助手 / 话题 segmented tab** (`HomeSidebarTab` / `AppState.homeSidebarTab`): assistants list, or topics (conversations) filtered to the selected assistant. A **设置 button is pinned to the bottom-left of the sidebar** (sets `rootSection = .settings`). The settings screen has a **返回 button** at the top of its nav column (sets `rootSection = .home`).
 
@@ -59,11 +59,11 @@ Just Chat is a native macOS AI chat client — a single Swift Package target (Sw
 
 **Chat layout** (`MainWindowView.MessageBubble`): assistant messages are full-width (avatar + `Just Chat` header + timestamp + token meta + `MarkdownText`, no bubble); user messages are right-aligned tinted glass bubbles (maxWidth ~520). The transcript uses `.padding(.horizontal, 28)` for code width. The `ChatHeader` model picker lists **all providers as submenus** (each with its models) and calls `AppState.setSelectedAssistantProviderAndModel(providerId:modelId:)` to rebind provider+model in one step — not just the current provider's models.
 
-**Context limit:** `AssistantProfile.contextMessageCount` (default 20, 0 = send all) caps how many recent messages `AppState.sendMessage` includes in the `ChatRequest` (`Array(requestMessages.suffix(limit))`). Set via a stepper in the assistant editor's 参数 card. Persisted in the `assistants.context_message_count` column (added via `addColumnIfNeeded` migration).
+**Context limit:** `AssistantProfile.contextMessageCount` (default 20, 0 = send only the last message) caps how many recent messages `AppState.sendMessage` includes in the `ChatRequest` (`Array(requestMessages.suffix(limit))` when >0, `suffix(1)` when 0). Set via a stepper in the assistant editor's 参数 card. Persisted in the `assistants.context_message_count` column (added via `addColumnIfNeeded` migration).
 
-**Design system** (`Theme.swift`): Single source of truth for color, radii, shadows, and the shared `Card` surface. Colors are dark-mode aware without an asset catalog — each `Color.just*` constant is backed by `NSColor(name:dynamicProvider:)` wrapped in `Color(nsColor:)`, resolving to light/dark values from `@Environment(\.colorScheme)`. Accent is blue (`#0071E3` light / `#0A84FF` dark). Provides `Radius`, `Card<Content>`, `hoverSurface()`, `cardShadow()`/`raisedShadow()`, `LinearGradient.justAccent`. `SettingsView.SettingsCard` mirrors `Card`'s styling. **Never reintroduce hardcoded `Color(r,g,b)` or `Color.white` fills in views — use the `just*` tokens or materials (`.regularMaterial`/`.ultraThinMaterial`) so dark mode stays correct.** Floating `NSPanel`s set `isOpaque = false` + `backgroundColor = .clear` so hosted materials actually frost the desktop.
+**Design system** (`Theme.swift`): Single source of truth for active colors, radii, shadows, hover surfaces, and the shared `Card` surface. Colors are dark-mode aware without an asset catalog — each `Color.just*` constant is backed by `NSColor(name:dynamicProvider:)` wrapped in `Color(nsColor:)`, resolving to light/dark values from `@Environment(\.colorScheme)`. Accent is blue (`#0071E3` light / `#0A84FF` dark). Provides `Radius`, `Card<Content>`, `hoverSurface()`, `cardShadow()`/`raisedShadow()`, `LinearGradient.justAccent`. `SettingsView.SettingsCard` mirrors `Card`'s styling. **Avoid hardcoded `Color(r,g,b)` fills in views — use the active `just*` tokens or materials (`.regularMaterial`/`.ultraThinMaterial`) so dark mode stays correct.** Floating `NSPanel`s set `isOpaque = false` + `backgroundColor = .clear` so hosted materials actually frost the desktop.
 
-**Panels** (`Panels.swift`): `QuickAssistantPanel` (floating chat with clipboard preview and quick actions) and `SelectionAssistantPanel` (selection toolbar with Copy/Search/Translate/Explain/Summarize). Both are SwiftUI views hosted in AppKit `NSPanel` windows.
+**Panels** (`Panels.swift`): `QuickAssistantPanel` (floating chat with quick actions) and `SelectionAssistantPanel` (selection toolbar with Copy/Search/Translate/Explain/Summarize). Both are SwiftUI views hosted in AppKit `NSPanel` windows.
 
 **Global hotkeys** (`GlobalHotKeyCenter.swift`): Carbon `RegisterEventHotKey` for `Cmd+Shift+Space` (quick assistant) and `Cmd+Shift+E` (selection assistant). Static weak reference pattern for the event handler callback.
 
@@ -77,5 +77,5 @@ Just Chat is a native macOS AI chat client — a single Swift Package target (Sw
 - `AppState` is the single source of truth — panels and settings all use the same instance.
 - Database operations are synchronous (SQLite on the main actor is fine for this scale).
 - Streaming uses `URLSession.bytes(for:)` with `AsyncSequence` iteration.
-- API keys are never stored in SQLite — only in Keychain, referenced by account name.
+- API keys are stored directly in SQLite (`providers.api_key` column) — there is no Keychain dependency.
 - Tests use `@testable import JustChat` to access internal types.

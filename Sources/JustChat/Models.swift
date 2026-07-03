@@ -1,11 +1,9 @@
 import Foundation
 
-enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
+enum ProviderKind: String, Codable, Sendable {
   case openAIChatCompletions
   case openAIResponses
   case anthropicMessages
-
-  var id: String { rawValue }
 
   var displayName: String {
     switch self {
@@ -16,7 +14,7 @@ enum ProviderKind: String, Codable, CaseIterable, Identifiable, Sendable {
   }
 }
 
-enum ProviderCatalogType: String, Codable, CaseIterable, Identifiable, Sendable {
+enum ProviderCatalogType: String, Codable, CaseIterable, Sendable {
   case openAI
   case openAIResponse
   case gemini
@@ -25,8 +23,6 @@ enum ProviderCatalogType: String, Codable, CaseIterable, Identifiable, Sendable 
   case newAPI
   case cherryIN
   case ollama
-
-  var id: String { rawValue }
 
   var displayName: String {
     switch self {
@@ -92,34 +88,22 @@ enum ProviderCatalogType: String, Codable, CaseIterable, Identifiable, Sendable 
     }
   }
 
-  var defaultAPIKeyName: String {
-    switch self {
-    case .openAI, .openAIResponse: "openai-primary"
-    case .anthropic: "anthropic-primary"
-    case .gemini: "gemini-primary"
-    case .azureOpenAI: "azure-openai-primary"
-    case .newAPI: "newapi-primary"
-    case .cherryIN: "cherryin-primary"
-    case .ollama: "ollama-local"
-    }
-  }
 }
 
-enum ChatRole: String, Codable, CaseIterable, Sendable {
+enum ChatRole: String, Codable, Sendable {
   case system
   case user
   case assistant
 }
 
 enum MessageStatus: String, Codable, Sendable {
-  case pending
   case streaming
   case success
   case error
   case stopped
 }
 
-struct Conversation: Identifiable, Codable, Hashable, Sendable {
+struct Conversation: Identifiable, Codable, Sendable {
   var id: UUID
   var title: String
   var assistantId: UUID?
@@ -127,27 +111,26 @@ struct Conversation: Identifiable, Codable, Hashable, Sendable {
   var updatedAt: Date
 }
 
-struct TokenUsage: Codable, Hashable, Sendable {
+struct TokenUsage: Codable, Equatable, Sendable {
   var inputTokens: Int?
   var outputTokens: Int?
   var totalTokens: Int?
 }
 
-struct Citation: Identifiable, Codable, Hashable, Sendable {
+struct Citation: Identifiable, Codable, Equatable, Sendable {
   var id: UUID
   var title: String
   var url: URL
   var snippet: String
-  var source: String
 }
 
-struct MessageImage: Codable, Hashable, Sendable, Identifiable {
+struct MessageImage: Codable, Sendable, Identifiable {
   var id: UUID
   var data: Data
   var mimeType: String
 }
 
-struct ChatMessage: Identifiable, Codable, Hashable, Sendable {
+struct ChatMessage: Identifiable, Codable, Sendable {
   var id: UUID
   var conversationId: UUID
   var role: ChatRole
@@ -163,14 +146,12 @@ struct ChatMessage: Identifiable, Codable, Hashable, Sendable {
   var updatedAt: Date
 }
 
-enum ReasoningEffort: String, Codable, CaseIterable, Identifiable, Hashable, Sendable {
+enum ReasoningEffort: String, Codable, CaseIterable, Sendable {
   case automatic
   case off
   case low
   case medium
   case high
-
-  var id: String { rawValue }
 
   var displayName: String {
     switch self {
@@ -211,7 +192,7 @@ enum ReasoningEffort: String, Codable, CaseIterable, Identifiable, Hashable, Sen
   }
 }
 
-struct AssistantProfile: Identifiable, Codable, Hashable, Sendable {
+struct AssistantProfile: Identifiable, Codable, Equatable, Sendable {
   var id: UUID
   var name: String
   var systemPrompt: String
@@ -220,10 +201,9 @@ struct AssistantProfile: Identifiable, Codable, Hashable, Sendable {
   var temperature: Double
   var maxTokens: Int
   var isWebSearchEnabled: Bool
-  var isVisionEnabled: Bool
   var reasoningEffort: ReasoningEffort
   var quickTemplates: [PromptTemplate]
-  /// How many of the most recent messages to send as context (0 = send all).
+  /// How many recent history messages to send as context (0 = only the current message).
   var contextMessageCount: Int = 20
 
   init(
@@ -235,7 +215,6 @@ struct AssistantProfile: Identifiable, Codable, Hashable, Sendable {
     temperature: Double,
     maxTokens: Int,
     isWebSearchEnabled: Bool,
-    isVisionEnabled: Bool,
     reasoningEffort: ReasoningEffort = .automatic,
     quickTemplates: [PromptTemplate],
     contextMessageCount: Int = 20
@@ -248,7 +227,6 @@ struct AssistantProfile: Identifiable, Codable, Hashable, Sendable {
     self.temperature = temperature
     self.maxTokens = maxTokens
     self.isWebSearchEnabled = isWebSearchEnabled
-    self.isVisionEnabled = isVisionEnabled
     self.reasoningEffort = reasoningEffort
     self.quickTemplates = quickTemplates
     self.contextMessageCount = contextMessageCount
@@ -263,7 +241,6 @@ struct AssistantProfile: Identifiable, Codable, Hashable, Sendable {
     case temperature
     case maxTokens
     case isWebSearchEnabled
-    case isVisionEnabled
     case reasoningEffort
     case quickTemplates
     case contextMessageCount
@@ -279,7 +256,6 @@ struct AssistantProfile: Identifiable, Codable, Hashable, Sendable {
     temperature = try container.decode(Double.self, forKey: .temperature)
     maxTokens = try container.decode(Int.self, forKey: .maxTokens)
     isWebSearchEnabled = try container.decode(Bool.self, forKey: .isWebSearchEnabled)
-    isVisionEnabled = try container.decodeIfPresent(Bool.self, forKey: .isVisionEnabled) ?? false
     reasoningEffort =
       try container.decodeIfPresent(ReasoningEffort.self, forKey: .reasoningEffort) ?? .automatic
     quickTemplates = try container.decode([PromptTemplate].self, forKey: .quickTemplates)
@@ -288,28 +264,25 @@ struct AssistantProfile: Identifiable, Codable, Hashable, Sendable {
   }
 }
 
-struct PromptTemplate: Identifiable, Codable, Hashable, Sendable {
+struct PromptTemplate: Identifiable, Codable, Equatable, Sendable {
   var id: UUID
   var title: String
   var prompt: String
 }
 
-struct ModelProvider: Identifiable, Codable, Hashable, Sendable {
+struct ModelProvider: Identifiable, Codable, Equatable, Sendable {
   var id: UUID
   var providerType: ProviderCatalogType
   var kind: ProviderKind
   var name: String
   var baseURL: URL
-  var apiKeyName: String
   var apiKey: String = ""
   var models: [String]
   var visionModels: Set<String> = []
   var defaultModel: String
-  var isEnabled: Bool
 }
 
-struct SearchSettings: Codable, Hashable, Sendable {
-  var tavilyAPIKeyName: String
+struct SearchSettings: Codable, Equatable, Sendable {
   var tavilyAPIKey: String
   var tavilyMaxResults: Int
   var useOpenAIResponsesNativeSearch: Bool
@@ -317,19 +290,16 @@ struct SearchSettings: Codable, Hashable, Sendable {
   static let `default` = SearchSettings()
 
   init(
-    tavilyAPIKeyName: String = "tavily-primary",
     tavilyAPIKey: String = "",
     tavilyMaxResults: Int = 6,
     useOpenAIResponsesNativeSearch: Bool = true
   ) {
-    self.tavilyAPIKeyName = tavilyAPIKeyName
     self.tavilyAPIKey = tavilyAPIKey
     self.tavilyMaxResults = tavilyMaxResults
     self.useOpenAIResponsesNativeSearch = useOpenAIResponsesNativeSearch
   }
 
   private enum CodingKeys: String, CodingKey {
-    case tavilyAPIKeyName
     case tavilyAPIKey
     case tavilyMaxResults
     case useOpenAIResponsesNativeSearch
@@ -337,8 +307,6 @@ struct SearchSettings: Codable, Hashable, Sendable {
 
   init(from decoder: Decoder) throws {
     let container = try decoder.container(keyedBy: CodingKeys.self)
-    tavilyAPIKeyName =
-      try container.decodeIfPresent(String.self, forKey: .tavilyAPIKeyName) ?? "tavily-primary"
     tavilyAPIKey = try container.decodeIfPresent(String.self, forKey: .tavilyAPIKey) ?? ""
     tavilyMaxResults = try container.decodeIfPresent(Int.self, forKey: .tavilyMaxResults) ?? 6
     useOpenAIResponsesNativeSearch =
@@ -346,15 +314,13 @@ struct SearchSettings: Codable, Hashable, Sendable {
   }
 }
 
-struct SearchResult: Identifiable, Codable, Hashable, Sendable {
-  var id: UUID
+struct SearchResult: Codable, Sendable {
   var title: String
   var content: String
   var url: URL
-  var provider: String
 }
 
-struct ChatRequest: Hashable, Sendable {
+struct ChatRequest: Sendable {
   var provider: ModelProvider
   var assistant: AssistantProfile
   var messages: [ChatMessage]
@@ -363,7 +329,7 @@ struct ChatRequest: Hashable, Sendable {
   var stream: Bool = true
 }
 
-enum WebSearchMode: String, Codable, Hashable, Sendable {
+enum WebSearchMode: String, Codable, Sendable {
   case disabled
   case tavily
   case providerNative
@@ -377,29 +343,24 @@ enum ChatStreamEvent: Equatable, Sendable {
   case completed
 }
 
-enum RootSection: String, CaseIterable, Identifiable, Sendable {
+enum RootSection: String, Sendable {
   case home = "首页"
   case settings = "设置"
 
-  var id: String { rawValue }
 }
 
-enum HomeSidebarTab: String, CaseIterable, Identifiable, Sendable {
+enum HomeSidebarTab: String, CaseIterable, Sendable {
   case assistants = "助手"
   case topics = "话题"
-
-  var id: String { rawValue }
 }
 
-enum AppearanceMode: String, Codable, CaseIterable, Identifiable, Sendable {
+enum AppearanceMode: String, Codable, CaseIterable, Sendable {
   case system = "自动"
   case light = "白天"
   case dark = "黑夜"
-
-  var id: String { rawValue }
 }
 
-struct AppPreferences: Codable, Hashable, Sendable {
+struct AppPreferences: Codable, Equatable, Sendable {
   var appearanceMode: AppearanceMode
   var homeSidebarWidth: Double
   var chatFontSize: Double
@@ -414,12 +375,9 @@ struct AppPreferences: Codable, Hashable, Sendable {
   var translationReasoningEffort: ReasoningEffort
   var quickAssistantEnabled: Bool
   var quickAssistantHotKey: String
-  var quickAssistantReadsClipboard: Bool
   var selectionAssistantEnabled: Bool
   var selectionAssistantHotKey: String
-  var selectionTriggerMode: SelectionTriggerMode
   var selectionCompactMode: Bool
-  var selectionFollowToolbar: Bool
   var selectionAutoClose: Bool
   var selectionAutoPin: Bool
   var selectionWindowOpacity: Double
@@ -439,12 +397,9 @@ struct AppPreferences: Codable, Hashable, Sendable {
     translationReasoningEffort: ReasoningEffort = .automatic,
     quickAssistantEnabled: Bool = true,
     quickAssistantHotKey: String = "Command+Shift+Space",
-    quickAssistantReadsClipboard: Bool = true,
     selectionAssistantEnabled: Bool = true,
     selectionAssistantHotKey: String = "Command+Shift+E",
-    selectionTriggerMode: SelectionTriggerMode = .shortcut,
     selectionCompactMode: Bool = false,
-    selectionFollowToolbar: Bool = true,
     selectionAutoClose: Bool = true,
     selectionAutoPin: Bool = false,
     selectionWindowOpacity: Double = 1.0
@@ -463,12 +418,9 @@ struct AppPreferences: Codable, Hashable, Sendable {
     self.translationReasoningEffort = translationReasoningEffort
     self.quickAssistantEnabled = quickAssistantEnabled
     self.quickAssistantHotKey = quickAssistantHotKey
-    self.quickAssistantReadsClipboard = quickAssistantReadsClipboard
     self.selectionAssistantEnabled = selectionAssistantEnabled
     self.selectionAssistantHotKey = selectionAssistantHotKey
-    self.selectionTriggerMode = selectionTriggerMode
     self.selectionCompactMode = selectionCompactMode
-    self.selectionFollowToolbar = selectionFollowToolbar
     self.selectionAutoClose = selectionAutoClose
     self.selectionAutoPin = selectionAutoPin
     self.selectionWindowOpacity = selectionWindowOpacity
@@ -502,18 +454,12 @@ struct AppPreferences: Codable, Hashable, Sendable {
         Bool.self, forKey: .quickAssistantEnabled) ?? true,
       quickAssistantHotKey: try container.decodeIfPresent(
         String.self, forKey: .quickAssistantHotKey) ?? "Command+Shift+Space",
-      quickAssistantReadsClipboard: try container.decodeIfPresent(
-        Bool.self, forKey: .quickAssistantReadsClipboard) ?? true,
       selectionAssistantEnabled: try container.decodeIfPresent(
         Bool.self, forKey: .selectionAssistantEnabled) ?? true,
       selectionAssistantHotKey: try container.decodeIfPresent(
         String.self, forKey: .selectionAssistantHotKey) ?? "Command+Shift+E",
-      selectionTriggerMode: try container.decodeIfPresent(
-        SelectionTriggerMode.self, forKey: .selectionTriggerMode) ?? .shortcut,
       selectionCompactMode: try container.decodeIfPresent(Bool.self, forKey: .selectionCompactMode)
         ?? false,
-      selectionFollowToolbar: try container.decodeIfPresent(
-        Bool.self, forKey: .selectionFollowToolbar) ?? true,
       selectionAutoClose: try container.decodeIfPresent(Bool.self, forKey: .selectionAutoClose)
         ?? true,
       selectionAutoPin: try container.decodeIfPresent(Bool.self, forKey: .selectionAutoPin)
@@ -523,41 +469,10 @@ struct AppPreferences: Codable, Hashable, Sendable {
     )
   }
 
-  static let `default` = AppPreferences(
-    appearanceMode: .system,
-    homeSidebarWidth: 300,
-    chatFontSize: 15,
-    defaultAssistantProviderId: nil,
-    defaultAssistantModelId: "",
-    defaultAssistantReasoningEffort: .automatic,
-    quickModelProviderId: nil,
-    quickModelId: "",
-    quickReasoningEffort: .automatic,
-    translationModelProviderId: nil,
-    translationModelId: "",
-    translationReasoningEffort: .automatic,
-    quickAssistantEnabled: true,
-    quickAssistantHotKey: "Command+Shift+Space",
-    quickAssistantReadsClipboard: true,
-    selectionAssistantEnabled: true,
-    selectionAssistantHotKey: "Command+Shift+E",
-    selectionTriggerMode: .shortcut,
-    selectionCompactMode: false,
-    selectionFollowToolbar: true,
-    selectionAutoClose: true,
-    selectionAutoPin: false,
-    selectionWindowOpacity: 1.0
-  )
+  static let `default` = AppPreferences()
 }
 
-enum SelectionTriggerMode: String, Codable, CaseIterable, Identifiable, Sendable {
-  case selected = "划词"
-  case shortcut = "快捷键"
-
-  var id: String { rawValue }
-}
-
-enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
+enum SettingsPane: String, Sendable {
   case providers = "模型服务"
   case defaultModel = "默认模型"
   case general = "常规设置"
@@ -568,6 +483,4 @@ enum SettingsPane: String, CaseIterable, Identifiable, Sendable {
   case selectionAssistant = "划词助手"
   case hotKeys = "快捷键"
   case about = "关于我们"
-
-  var id: String { rawValue }
 }

@@ -22,6 +22,5 @@ final class TavilySearchServiceTests: XCTestCase {
         XCTAssertEqual(results.count, 1)
         XCTAssertEqual(results[0].title, "Tavily")
         XCTAssertEqual(results[0].content, "Search API")
-        XCTAssertEqual(results[0].provider, "tavily")
     }
 }

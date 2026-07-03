@@ -46,7 +46,7 @@ final class SQLiteStoreTests: XCTestCase {
     provider.visionModels = ["gpt-5.4"]
     let assistant = Defaults.assistants(primaryProviderId: provider.id)[0]
     let search = SearchSettings(
-      tavilyAPIKeyName: "tavily-test", tavilyAPIKey: "tvly-test", tavilyMaxResults: 3,
+      tavilyAPIKey: "tvly-test", tavilyMaxResults: 3,
       useOpenAIResponsesNativeSearch: false)
     var preferences = AppPreferences.default
     preferences.selectionCompactMode = true
@@ -131,7 +131,6 @@ final class SQLiteStoreTests: XCTestCase {
         "temperature": 0.7,
         "maxTokens": 4096,
         "isWebSearchEnabled": true,
-        "isVisionEnabled": false,
         "quickTemplates": [],
         "contextMessageCount": 20
       }

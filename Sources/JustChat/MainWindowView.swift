@@ -148,7 +148,7 @@ private struct HomeSidebar: View {
   var body: some View {
     VStack(spacing: 0) {
       Picker("首页列表", selection: $appState.homeSidebarTab) {
-        ForEach(HomeSidebarTab.allCases) { tab in
+        ForEach(HomeSidebarTab.allCases, id: \.self) { tab in
           Text(tab.rawValue).tag(tab)
         }
       }
@@ -807,7 +807,7 @@ extension ChatMessage {
     let haystacks = [
       content,
       reasoningContent,
-      citations.map { "\($0.title) \($0.snippet) \($0.source) \($0.url.absoluteString)" }.joined(
+      citations.map { "\($0.title) \($0.snippet) \($0.url.absoluteString)" }.joined(
         separator: " "),
     ]
     return haystacks.contains { $0.localizedLowercase.contains(needle) }
@@ -1129,7 +1129,7 @@ private struct MetricBadge: View {
   }
 }
 
-private struct CitationChip: View {
+struct CitationChip: View {
   var citation: Citation
 
   private var domain: String {
@@ -1160,7 +1160,7 @@ private struct CitationChip: View {
 }
 
 /// Simple wrapping layout for citation chips.
-private struct FlexWrap: Layout {
+struct FlexWrap: Layout {
   var spacing: CGFloat = 6
 
   func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
@@ -1309,7 +1309,7 @@ private struct ReasoningEffortMenu: View {
   var body: some View {
     Menu {
       Section(endpointTitle) {
-        ForEach(ReasoningEffort.allCases) { effort in
+        ForEach(ReasoningEffort.allCases, id: \.self) { effort in
           Button {
             appState.setSelectedAssistantReasoningEffort(effort)
           } label: {

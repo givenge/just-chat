@@ -12,7 +12,7 @@ struct MarkdownText: View {
 
     private var document: Document { Document(parsing: Self.normalizedMarkdown(content)) }
 
-    static func normalizedMarkdown(_ markdown: String) -> String {
+    nonisolated static func normalizedMarkdown(_ markdown: String) -> String {
         var inFence = false
         return markdown.components(separatedBy: "\n").map { rawLine in
             let line = String(rawLine)

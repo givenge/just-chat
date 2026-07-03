@@ -1,7 +1,6 @@
 import Foundation
 
 struct ChatSessionService: Sendable {
-    var adapterFactory = ChatAdapterFactory()
     var tavily = TavilySearchService()
     var session: URLSession = .shared
     var searchSettings: SearchSettings = .default
@@ -29,7 +28,7 @@ struct ChatSessionService: Sendable {
         decisionRequest.searchResults = []
 
         let apiKey = try readAPIKey(for: decisionRequest.provider)
-        let adapter = adapterFactory.adapter(for: decisionRequest.provider.kind)
+        let adapter = chatAdapter(for: decisionRequest.provider.kind)
         let decisionURLRequest = try adapter.makeRequest(decisionRequest, apiKey: apiKey)
         let (data, response) = try await session.data(for: decisionURLRequest)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -66,8 +65,7 @@ struct ChatSessionService: Sendable {
                 id: UUID(),
                 title: result.title,
                 url: result.url,
-                snippet: result.content,
-                source: result.provider
+                snippet: result.content
             )))
         }
 
@@ -84,7 +82,7 @@ struct ChatSessionService: Sendable {
     ) async throws {
         var executableRequest = request
         let apiKey = try readAPIKey(for: executableRequest.provider)
-        let adapter = adapterFactory.adapter(for: executableRequest.provider.kind)
+        let adapter = chatAdapter(for: executableRequest.provider.kind)
         let urlRequest = try adapter.makeRequest(executableRequest, apiKey: apiKey)
         let bytes: URLSession.AsyncBytes
         let response: URLResponse
@@ -128,31 +126,50 @@ struct ChatSessionService: Sendable {
             return false
         }
 
-        for try await line in bytes.lines {
+        func processLine(_ line: String) async -> Bool {
             rawResponse.append(line)
             rawResponse.append("\n")
 
             if line.isEmpty {
-                if await flushEvent() { return }
-                continue
+                return await flushEvent()
             }
 
             if line.hasPrefix(":") {
-                continue
+                return false
             }
 
             if line.hasPrefix("event:") {
-                if await flushEvent() { return }
+                if await flushEvent() { return true }
                 eventName = String(line.dropFirst("event:".count)).trimmingCharacters(in: .whitespaces)
-                continue
+                return false
             }
 
             if line.hasPrefix("data:") {
                 dataLines.append(String(line.dropFirst("data:".count)).trimmingCharacters(in: .whitespaces))
-                if eventName == nil, await flushEvent() {
-                    return
-                }
             }
+            return false
+        }
+
+        var lineData = Data()
+        for try await byte in bytes {
+            if byte == 10 {
+                var line = String(data: lineData, encoding: .utf8) ?? ""
+                if line.last == "\r" {
+                    line.removeLast()
+                }
+                lineData.removeAll(keepingCapacity: true)
+                if await processLine(line) { return }
+            } else {
+                lineData.append(byte)
+            }
+        }
+
+        if !lineData.isEmpty {
+            var line = String(data: lineData, encoding: .utf8) ?? ""
+            if line.last == "\r" {
+                line.removeLast()
+            }
+            if await processLine(line) { return }
         }
 
         if await flushEvent() { return }

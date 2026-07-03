@@ -51,24 +51,16 @@ extension Color {
     static let justAccent = dynamicColor(light: "0071E3", dark: "0A84FF")
     /// A slightly lighter accent for gradient ends and hovers.
     static let justAccentLight = dynamicColor(light: "3395F0", dark: "409CFF")
-    /// Foreground for content placed on top of the accent.
-    static let justAccentOn = Color.white
-
     static let justWindowBackground = dynamicColor(light: "FFFFFF", dark: "1C1C1E")
     static let justChromeBackground = dynamicColor(light: "F5F5F7", dark: "2C2C2E")
     static let justSidebarBackground = dynamicColor(light: "F5F5F7", dark: "242426")
     static let justControlBackground = dynamicColor(light: "FFFFFF", dark: "2C2C2E")
     static let justInputBackground = dynamicColor(light: "F5F5F7", dark: "1C1C1E")
 
-    static let justBorder = dynamicColor(light: "D2D2D7", dark: "48484A")
     static let justBorderSoft = dynamicColor(light: "E8E8ED", dark: "3A3A3C")
 
     static let justForeground = dynamicColor(light: "1D1D1F", dark: "F5F5F7")
-    static let justMuted = dynamicColor(light: "6E6E73", dark: "8E8E93")
     static let justMeta = dynamicColor(light: "86868B", dark: "636366")
-
-    /// Tinted surface for user-side message bubbles.
-    static let justUserBubble = dynamicColor(light: "EAF3FE", dark: "1E3A5F")
 
     /// Semantic helpers kept for clarity at call sites.
     static let justSuccess = dynamicColor(light: "16A34A", dark: "30D158")
@@ -155,14 +147,6 @@ extension View {
         focusable(false)
             .focusEffectDisabled()
     }
-
-    /// Thin hairline border in the soft border token.
-    func softBorder(radius: CGFloat = Radius.md, lineWidth: CGFloat = 1) -> some View {
-        overlay(
-            RoundedRectangle(cornerRadius: radius, style: .continuous)
-                .stroke(Color.justBorderSoft, lineWidth: lineWidth)
-        )
-    }
 }
 
 // MARK: - Hover surface
@@ -213,9 +197,6 @@ extension View {
 
 // MARK: - Shared card surface
 
-/// Reusable glass card: frosted material over the control surface, hairline
-/// border, and a subtle shadow. Used by the main window, agent editor, and
-/// settings panes so card styling never diverges.
 struct Card<Content: View>: View {
     @ViewBuilder var content: Content
     var radius: CGFloat = Radius.md

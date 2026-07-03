@@ -8,13 +8,7 @@ struct SelectedTextSnapshot {
 }
 
 enum SelectedTextReader {
-    /// Reads the currently selected text from the frontmost application using the
-    /// macOS Accessibility API. Returns `nil` when Accessibility permissions are
-    /// not granted or when no text is selected.
-    static func readSelectedText() -> String? {
-        readSelection()?.text
-    }
-
+    /// Reads the current selection and bounds from the frontmost app via Accessibility.
     static func readSelection() -> SelectedTextSnapshot? {
         let options = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         guard AXIsProcessTrustedWithOptions(options) else { return nil }

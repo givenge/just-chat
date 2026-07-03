@@ -83,12 +83,12 @@ final class SQLiteStore {
           provider.kind.rawValue,
           provider.name,
           provider.baseURL.absoluteString,
-          provider.apiKeyName,
+          "",
           provider.apiKey,
           String(data: modelsData, encoding: .utf8) ?? "[]",
           String(data: visionModelsData, encoding: .utf8) ?? "[]",
           provider.defaultModel,
-          provider.isEnabled,
+          true,
         ]
       )
     }
@@ -97,7 +97,7 @@ final class SQLiteStore {
   func listProviders() throws -> [ModelProvider] {
     try query(
       """
-      SELECT id, provider_type, kind, name, base_url, api_key_name, api_key, models_json, vision_models_json, default_model, is_enabled
+      SELECT id, provider_type, kind, name, base_url, api_key, models_json, vision_models_json, default_model
       FROM providers
       ORDER BY rowid ASC
       """
@@ -110,9 +110,9 @@ final class SQLiteStore {
       let providerType =
         providerTypeText.flatMap(ProviderCatalogType.init(rawValue:))
         ?? inferProviderType(name: name, kind: kind)
-      let modelsText = String(cString: sqlite3_column_text(statement, 7))
+      let modelsText = String(cString: sqlite3_column_text(statement, 6))
       let models = (try? JSONDecoder().decode([String].self, from: Data(modelsText.utf8))) ?? []
-      let visionModelsText = optionalString(statement, 8) ?? "[]"
+      let visionModelsText = optionalString(statement, 7) ?? "[]"
       let visionModels = Set(
         (try? JSONDecoder().decode([String].self, from: Data(visionModelsText.utf8))) ?? [])
       return ModelProvider(
@@ -122,12 +122,10 @@ final class SQLiteStore {
         name: name,
         baseURL: URL(string: String(cString: sqlite3_column_text(statement, 4))) ?? URL(
           string: "https://api.openai.com/v1")!,
-        apiKeyName: String(cString: sqlite3_column_text(statement, 5)),
-        apiKey: optionalString(statement, 6) ?? "",
+        apiKey: optionalString(statement, 5) ?? "",
         models: models,
         visionModels: visionModels,
-        defaultModel: String(cString: sqlite3_column_text(statement, 9)),
-        isEnabled: sqlite3_column_int(statement, 10) != 0
+        defaultModel: String(cString: sqlite3_column_text(statement, 8))
       )
     }
   }
@@ -140,9 +138,9 @@ final class SQLiteStore {
         """
         INSERT INTO assistants (
           id, name, system_prompt, provider_id, model_id, temperature,
-          max_tokens, is_web_search_enabled, templates_json, context_message_count, is_vision_enabled, reasoning_effort
+          max_tokens, is_web_search_enabled, templates_json, context_message_count, reasoning_effort
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         [
           assistant.id.uuidString,
@@ -155,7 +153,6 @@ final class SQLiteStore {
           assistant.isWebSearchEnabled,
           String(data: templatesData, encoding: .utf8) ?? "[]",
           assistant.contextMessageCount,
-          assistant.isVisionEnabled,
           assistant.reasoningEffort.rawValue,
         ]
       )
@@ -165,7 +162,7 @@ final class SQLiteStore {
   func listAssistants() throws -> [AssistantProfile] {
     try query(
       """
-      SELECT id, name, system_prompt, provider_id, model_id, temperature, max_tokens, is_web_search_enabled, templates_json, context_message_count, is_vision_enabled, reasoning_effort
+      SELECT id, name, system_prompt, provider_id, model_id, temperature, max_tokens, is_web_search_enabled, templates_json, context_message_count, reasoning_effort
       FROM assistants
       ORDER BY rowid ASC
       """
@@ -182,8 +179,7 @@ final class SQLiteStore {
         temperature: sqlite3_column_double(statement, 5),
         maxTokens: Int(sqlite3_column_int64(statement, 6)),
         isWebSearchEnabled: sqlite3_column_int(statement, 7) != 0,
-        isVisionEnabled: sqlite3_column_int(statement, 10) != 0,
-        reasoningEffort: ReasoningEffort(rawValue: optionalString(statement, 11) ?? "automatic")
+        reasoningEffort: ReasoningEffort(rawValue: optionalString(statement, 10) ?? "automatic")
           ?? .automatic,
         quickTemplates: templates,
         contextMessageCount: Int(sqlite3_column_int64(statement, 9))
@@ -355,7 +351,7 @@ final class SQLiteStore {
         kind TEXT NOT NULL,
         name TEXT NOT NULL,
         base_url TEXT NOT NULL,
-        api_key_name TEXT NOT NULL,
+        api_key_name TEXT NOT NULL DEFAULT '',
         api_key TEXT NOT NULL DEFAULT '',
         models_json TEXT NOT NULL,
         vision_models_json TEXT NOT NULL DEFAULT '[]',
@@ -387,8 +383,6 @@ final class SQLiteStore {
     try addColumnIfNeeded(
       table: "assistants", column: "context_message_count",
       definition: "INTEGER NOT NULL DEFAULT 20")
-    try addColumnIfNeeded(
-      table: "assistants", column: "is_vision_enabled", definition: "INTEGER NOT NULL DEFAULT 0")
     try addColumnIfNeeded(
       table: "assistants", column: "reasoning_effort",
       definition: "TEXT NOT NULL DEFAULT 'automatic'")

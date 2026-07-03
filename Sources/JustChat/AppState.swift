@@ -2,6 +2,14 @@ import AppKit
 import Combine
 import Foundation
 
+private struct ModelListResponse: Decodable {
+  var data: [ModelItem]
+
+  struct ModelItem: Decodable {
+    var id: String
+  }
+}
+
 private actor TextAccumulator {
   private var value = ""
 
@@ -100,7 +108,6 @@ final class AppState: ObservableObject {
   @Published var composerAttachments: [MessageImage] = []
   @Published var isStreaming = false
   @Published var statusMessage: String?
-  @Published var settingsPresented = false
   @Published var selectedSettingsPane: SettingsPane = .providers
   @Published var searchSettings: SearchSettings = .default
   @Published var preferences: AppPreferences = .default
@@ -291,7 +298,6 @@ final class AppState: ObservableObject {
       temperature: 0.7,
       maxTokens: 4096,
       isWebSearchEnabled: true,
-      isVisionEnabled: false,
       reasoningEffort: preferences.defaultAssistantReasoningEffort,
       quickTemplates: [
         PromptTemplate(id: UUID(), title: "翻译", prompt: "翻译为简体中文："),
@@ -324,10 +330,8 @@ final class AppState: ObservableObject {
       kind: type.defaultKind,
       name: name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? type.displayName : name,
       baseURL: type.defaultBaseURL,
-      apiKeyName: type.defaultAPIKeyName,
       models: models,
-      defaultModel: models.first ?? "",
-      isEnabled: true
+      defaultModel: models.first ?? ""
     )
     providers.append(provider)
     selectedProviderId = provider.id
@@ -357,7 +361,19 @@ final class AppState: ObservableObject {
       return []
     }
     do {
-      let models = try await ModelListFetcher.fetchModels(baseURL: provider.baseURL, apiKey: apiKey)
+      let url = provider.baseURL.appendingPathComponent("models")
+      var request = URLRequest(url: url)
+      request.httpMethod = "GET"
+      request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+      request.timeoutInterval = 15
+
+      let (data, response) = try await URLSession.shared.data(for: request)
+      guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode)
+      else {
+        throw URLError(.badServerResponse)
+      }
+
+      let models = try JSONDecoder().decode(ModelListResponse.self, from: data).data.map(\.id).sorted()
       setStatusMessage("已获取 \(models.count) 个可添加模型。", autoClear: true)
       return models
     } catch {

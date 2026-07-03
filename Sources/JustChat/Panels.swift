@@ -460,13 +460,11 @@ private func distanceSquared(from rect: CGRect, to point: CGPoint) -> CGFloat {
     return dx * dx + dy * dy
 }
 
-private enum QuickAssistantFeature: Int, CaseIterable, Identifiable {
+private enum QuickAssistantFeature: CaseIterable {
     case answer
     case translate
     case summarize
     case explain
-
-    var id: Int { rawValue }
 
     var icon: String {
         switch self {
@@ -486,11 +484,7 @@ private enum QuickAssistantFeature: Int, CaseIterable, Identifiable {
         }
     }
 
-    // var shortcut: String? {
-    //     self == .answer ? "Return" : nil
-    // }
-
-    var prefix: String? {
+    var prefix: String {
         switch self {
         case .answer:
             "请直接回答下面的问题。若信息不足，请说明必要假设，并给出清晰、可执行的回答。"
@@ -526,6 +520,7 @@ private struct QuickAssistantPanel: View {
     @State private var runTask: Task<Void, Never>?
     @State private var focusToken = UUID()
     @State private var isInputFocused = false
+    @State private var thinkTagParser = ThinkTagParser()
 
     init(
         assistant: AssistantProfile,
@@ -694,7 +689,6 @@ private struct QuickAssistantPanel: View {
                     QuickActionCard(
                         icon: feature.icon,
                         title: feature.title,
-                        // shortcut: feature.shortcut,
                         isEnabled: hasInputText && !isRunning,
                         isSelected: index == selectedFeatureIndex
                     ) {
@@ -764,13 +758,12 @@ private struct QuickAssistantPanel: View {
         }
         submittedPrompt = sourceText
         activeFeature = feature
-        let text = [feature.prefix, sourceText].compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-            .joined(separator: "\n\n")
+        let text = "\(feature.prefix)\n\n\(sourceText)"
         responseId = UUID()
         result = ""
         reasoning = ""
         citations = []
+        thinkTagParser = ThinkTagParser()
         isRunning = true
         runTask?.cancel()
         runTask = Task {
@@ -792,6 +785,7 @@ private struct QuickAssistantPanel: View {
         result = ""
         reasoning = ""
         citations = []
+        thinkTagParser = ThinkTagParser()
         activeFeature = nil
         focusToken = UUID()
     }
@@ -857,7 +851,9 @@ private struct QuickAssistantPanel: View {
     private func apply(_ event: ChatStreamEvent) {
         switch event {
         case .delta(let text):
-            result += text
+            let parsed = thinkTagParser.append(text)
+            result += parsed.content
+            reasoning += parsed.reasoning
         case .reasoningDelta(let text):
             reasoning += text
         case .citation(let citation):
@@ -865,6 +861,9 @@ private struct QuickAssistantPanel: View {
         case .usage:
             break
         case .completed:
+            let parsed = thinkTagParser.finish()
+            result += parsed.content
+            reasoning += parsed.reasoning
             isRunning = false
         }
     }
@@ -1011,7 +1010,6 @@ private struct QuickAssistantInputField: NSViewRepresentable {
 private struct QuickActionCard: View {
     var icon: String
     var title: String
-    // var shortcut: String?
     var isEnabled: Bool = true
     var isSelected: Bool = false
     var action: () -> Void
@@ -1041,22 +1039,6 @@ private struct QuickActionCard: View {
                     .foregroundStyle(isEnabled ? .primary : .secondary)
                     .lineLimit(1)
 
-                // Shortcut badge.
-                // if let shortcut {
-                //     Text(shortcut)
-                //         .font(.system(size: 11, weight: .medium, design: .monospaced))
-                //         .foregroundStyle(.secondary)
-                //         .padding(.horizontal, 8)
-                //         .frame(height: 20)
-                //         .background(
-                //             Capsule()
-                //                 .fill(Color.justControlBackground)
-                //         )
-                //         .overlay(
-                //             Capsule()
-                //                 .stroke(Color.justBorderSoft, lineWidth: 1)
-                //         )
-                // }
             }
             .padding(.vertical, 14)
             .padding(.horizontal, 12)
@@ -1236,7 +1218,7 @@ private struct QuickAssistantResultView: View {
     }
 }
 
-private enum SelectionToolbarAction: CaseIterable {
+private enum SelectionToolbarAction {
     case ask
     case translate
     case explain
@@ -1383,6 +1365,7 @@ private struct SelectionActionPanel: View {
     @State private var isRunning = false
     @State private var question = ""
     @State private var responseId = UUID()
+    @State private var thinkTagParser = ThinkTagParser()
     @FocusState private var focused: Bool
 
     private var hasContent: Bool {
@@ -1615,6 +1598,7 @@ private struct SelectionActionPanel: View {
         result = ""
         reasoning = ""
         citations = []
+        thinkTagParser = ThinkTagParser()
         isRunning = true
         Task {
             do {
@@ -1682,7 +1666,9 @@ private struct SelectionActionPanel: View {
     private func apply(_ event: ChatStreamEvent) {
         switch event {
         case .delta(let text):
-            result += text
+            let parsed = thinkTagParser.append(text)
+            result += parsed.content
+            reasoning += parsed.reasoning
         case .reasoningDelta(let text):
             reasoning += text
         case .citation(let citation):
@@ -1690,6 +1676,9 @@ private struct SelectionActionPanel: View {
         case .usage:
             break
         case .completed:
+            let parsed = thinkTagParser.finish()
+            result += parsed.content
+            reasoning += parsed.reasoning
             isRunning = false
         }
     }
@@ -1826,75 +1815,5 @@ private struct ResultBlock: View {
                 .stroke(Color.justBorderSoft, lineWidth: 1)
         )
         .cardShadow()
-    }
-}
-
-private struct CitationChip: View {
-    var citation: Citation
-
-    private var domain: String {
-        citation.url.host ?? citation.url.absoluteString
-    }
-
-    var body: some View {
-        Link(destination: citation.url) {
-            HStack(spacing: 5) {
-                Image(systemName: "link")
-                    .font(.system(size: 10, weight: .semibold))
-                Text(citation.title)
-                    .lineLimit(1)
-                if !domain.isEmpty {
-                    Text(domain)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-            }
-            .font(.caption)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Capsule().fill(Color.justControlBackground))
-            .overlay(Capsule().stroke(Color.justBorderSoft, lineWidth: 1))
-            .hoverSurface(radius: Radius.pill, opacity: 0.4)
-        }
-    }
-}
-
-/// Simple wrapping layout for citation chips.
-private struct FlexWrap: Layout {
-    var spacing: CGFloat = 6
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var lineHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > width && x > 0 {
-                x = 0
-                y += lineHeight + spacing
-                lineHeight = 0
-            }
-            x += size.width + spacing
-            lineHeight = max(lineHeight, size.height)
-        }
-        return CGSize(width: min(width, 10_000), height: y + lineHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout Void) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var lineHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x + size.width > bounds.maxX && x > bounds.minX {
-                x = bounds.minX
-                y += lineHeight + spacing
-                lineHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            lineHeight = max(lineHeight, size.height)
-        }
     }
 }
