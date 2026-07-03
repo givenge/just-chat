@@ -72,10 +72,13 @@ final class SQLiteStoreTests: XCTestCase {
     XCTAssertEqual(preferences.chatFontSize, 15)
     XCTAssertNil(preferences.defaultAssistantProviderId)
     XCTAssertEqual(preferences.defaultAssistantModelId, "")
+    XCTAssertEqual(preferences.defaultAssistantReasoningEffort, .automatic)
     XCTAssertNil(preferences.quickModelProviderId)
     XCTAssertEqual(preferences.quickModelId, "")
+    XCTAssertEqual(preferences.quickReasoningEffort, .automatic)
     XCTAssertNil(preferences.translationModelProviderId)
     XCTAssertEqual(preferences.translationModelId, "")
+    XCTAssertEqual(preferences.translationReasoningEffort, .automatic)
     XCTAssertEqual(preferences.quickAssistantHotKey, "Command+Shift+Space")
     XCTAssertEqual(preferences.selectionAssistantHotKey, "Command+Shift+E")
   }

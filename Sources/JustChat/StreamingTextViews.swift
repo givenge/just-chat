@@ -159,14 +159,24 @@ struct SmoothStreamingMarkdownView: View {
     let content: String
     let isStreaming: Bool
     var fontSize: CGFloat = 15
+    var frameIntervalMilliseconds: Int = 33
 
     @StateObject private var player: SmoothStreamPlayer
 
-    init(content: String, isStreaming: Bool, fontSize: CGFloat = 15) {
+    init(
+        content: String,
+        isStreaming: Bool,
+        fontSize: CGFloat = 15,
+        frameIntervalMilliseconds: Int = 33
+    ) {
         self.content = content
         self.isStreaming = isStreaming
         self.fontSize = fontSize
-        _player = StateObject(wrappedValue: SmoothStreamPlayer(initialText: content, frameIntervalMilliseconds: 33))
+        self.frameIntervalMilliseconds = frameIntervalMilliseconds
+        _player = StateObject(wrappedValue: SmoothStreamPlayer(
+            initialText: content,
+            frameIntervalMilliseconds: frameIntervalMilliseconds
+        ))
     }
 
     var body: some View {

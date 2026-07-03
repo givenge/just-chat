@@ -143,6 +143,7 @@ final class SelectionAssistantController {
         provider: ModelProvider,
         translationProvider: ModelProvider,
         translationModelId: String,
+        translationReasoningEffort: ReasoningEffort,
         searchSettings: SearchSettings,
         preferences: AppPreferences
     ) {
@@ -157,6 +158,7 @@ final class SelectionAssistantController {
                 provider: provider,
                 translationProvider: translationProvider,
                 translationModelId: translationModelId,
+                translationReasoningEffort: translationReasoningEffort,
                 searchSettings: searchSettings,
                 preferences: preferences
             )
@@ -170,6 +172,7 @@ final class SelectionAssistantController {
         provider: ModelProvider,
         translationProvider: ModelProvider,
         translationModelId: String,
+        translationReasoningEffort: ReasoningEffort,
         searchSettings: SearchSettings,
         preferences: AppPreferences
     ) {
@@ -195,6 +198,7 @@ final class SelectionAssistantController {
                     provider: provider,
                     translationProvider: translationProvider,
                     translationModelId: translationModelId,
+                    translationReasoningEffort: translationReasoningEffort,
                     searchSettings: searchSettings,
                     preferences: preferences
                 )
@@ -226,6 +230,7 @@ final class SelectionAssistantController {
         provider: ModelProvider,
         translationProvider: ModelProvider,
         translationModelId: String,
+        translationReasoningEffort: ReasoningEffort,
         searchSettings: SearchSettings,
         preferences: AppPreferences
     ) {
@@ -253,6 +258,7 @@ final class SelectionAssistantController {
                 provider: provider,
                 translationProvider: translationProvider,
                 translationModelId: translationModelId,
+                translationReasoningEffort: translationReasoningEffort,
                 searchSettings: searchSettings,
                 preferences: preferences
             )
@@ -269,6 +275,7 @@ final class SelectionAssistantController {
         provider: ModelProvider,
         translationProvider: ModelProvider,
         translationModelId: String,
+        translationReasoningEffort: ReasoningEffort,
         searchSettings: SearchSettings,
         preferences: AppPreferences
     ) {
@@ -281,6 +288,7 @@ final class SelectionAssistantController {
             actionProvider = translationProvider
             actionAssistant.providerId = translationProvider.id
             actionAssistant.modelId = translationModelId
+            actionAssistant.reasoningEffort = translationReasoningEffort
             actionAssistant.isWebSearchEnabled = false
         }
 
@@ -485,13 +493,13 @@ private enum QuickAssistantFeature: Int, CaseIterable, Identifiable {
     var prefix: String? {
         switch self {
         case .answer:
-            nil
+            "请直接回答下面的问题。若信息不足，请说明必要假设，并给出清晰、可执行的回答。"
         case .translate:
-            "Translate this text into concise Simplified Chinese while preserving terms."
+            "请自动识别下面文本的语言并翻译：如果原文是中文，译成自然英文；否则译成准确流畅的简体中文。保留专有名词、代码、链接和 Markdown 结构，只输出译文。"
         case .summarize:
-            "Summarize this content into 3-5 concise bullet points."
+            "请将下面内容总结为 3-5 条简洁要点，保留关键事实、数字、结论和行动项。"
         case .explain:
-            "Explain the key ideas, context, and implications clearly."
+            "请解释下面内容的含义、背景和关键概念，指出它为什么重要，并保持语言简洁清楚。"
         }
     }
 }
@@ -1110,7 +1118,8 @@ private struct QuickAssistantResultView: View {
                             ThinkingBlock(
                                 id: responseId,
                                 text: reasoning,
-                                isStreaming: isRunning && result.isEmpty
+                                isStreaming: isRunning && result.isEmpty,
+                                collapseWhenStreamingEnds: true
                             )
                         }
 
@@ -1129,7 +1138,11 @@ private struct QuickAssistantResultView: View {
                                 .font(.system(size: 14))
                                 .foregroundStyle(.secondary)
                         } else {
-                            SmoothStreamingMarkdownView(content: result, isStreaming: isRunning)
+                            SmoothStreamingMarkdownView(
+                                content: result,
+                                isStreaming: isRunning,
+                                frameIntervalMilliseconds: 16
+                            )
                         }
 
                         // Citations.
@@ -1256,13 +1269,13 @@ private enum SelectionToolbarAction: CaseIterable {
     var prompt: String {
         switch self {
         case .ask:
-            "Answer this selected-text request clearly."
+            "请基于下面选中文本回答用户的问题。若用户没有提出具体问题，请概括这段文本的核心含义。"
         case .translate:
-            "Translate the following text into concise Simplified Chinese while preserving technical terms."
+            "请自动识别下面文本的语言并翻译：如果原文是中文，译成自然英文；否则译成准确流畅的简体中文。保留术语、代码、链接和 Markdown 结构，只输出译文。"
         case .explain:
-            "Explain the following text clearly, including key concepts and context."
+            "请解释下面选中文本的含义、背景和关键概念，指出它为什么重要，并保持语言简洁清楚。"
         case .summarize:
-            "Summarize the following selected text into 3-5 concise bullet points."
+            "请将下面选中文本总结为 3-5 条简洁要点，保留关键事实、数字、结论和行动项。"
         case .search, .copy:
             ""
         }
@@ -1589,9 +1602,13 @@ private struct SelectionActionPanel: View {
         let prompt: String
         if action == .ask {
             let q = question.trimmingCharacters(in: .whitespacesAndNewlines)
-            prompt = q.isEmpty ? text : "\(q)\n\n\(text)"
+            if q.isEmpty {
+                prompt = "\(action.prompt)\n\n选中文本：\n\(text)"
+            } else {
+                prompt = "\(action.prompt)\n\n用户问题：\n\(q)\n\n选中文本：\n\(text)"
+            }
         } else {
-            prompt = "\(action.prompt)\n\n\(text)"
+            prompt = "\(action.prompt)\n\n选中文本：\n\(text)"
         }
 
         responseId = UUID()
@@ -1694,7 +1711,8 @@ private struct SelectionResultView: View {
                         ThinkingBlock(
                             id: responseId,
                             text: reasoning,
-                            isStreaming: isRunning && result.isEmpty
+                            isStreaming: isRunning && result.isEmpty,
+                            collapseWhenStreamingEnds: true
                         )
                     }
 
@@ -1712,7 +1730,11 @@ private struct SelectionResultView: View {
                             .font(.system(size: 14))
                             .foregroundStyle(.secondary)
                     } else {
-                        SmoothStreamingMarkdownView(content: result, isStreaming: isRunning)
+                        SmoothStreamingMarkdownView(
+                            content: result,
+                            isStreaming: isRunning,
+                            frameIntervalMilliseconds: 16
+                        )
                     }
 
                     if !citations.isEmpty {
@@ -1776,7 +1798,11 @@ private struct ResultBlock: View {
                         .font(.system(size: 14))
                         .foregroundStyle(.secondary)
                 } else {
-                    SmoothStreamingMarkdownView(content: result, isStreaming: isRunning)
+                    SmoothStreamingMarkdownView(
+                        content: result,
+                        isStreaming: isRunning,
+                        frameIntervalMilliseconds: 16
+                    )
                 }
 
                 if !citations.isEmpty {

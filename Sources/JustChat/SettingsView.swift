@@ -803,38 +803,58 @@ private struct DefaultModelPane: View {
     @EnvironmentObject private var appState: AppState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            modelCard(
-                title: "默认助手模型",
-                icon: "message",
-                description: "创建新助手时使用的模型，如果助手未设置模型，则使用此模型。",
-                providerId: defaultAssistantProviderBinding,
-                modelId: defaultAssistantModelBinding
-            )
-            modelCard(
-                title: "快速模型",
-                icon: "hare",
-                description: "执行话题命名等轻任务时使用的模型。",
-                providerId: quickProviderBinding,
-                modelId: quickModelBinding
-            )
-            modelCard(
-                title: "翻译模型",
-                icon: "character.book.closed",
-                description: "翻译服务使用的模型。",
-                providerId: translationProviderBinding,
-                modelId: translationModelBinding
-            )
-
-            Button("保存默认模型设置") {
-                appState.persistConfiguration()
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("默认模型")
+                    .font(.system(size: 24, weight: .bold))
+                Text("为常用任务指定模型和思考等级。默认表示不发送思考参数。")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.justAccent)
-            .focusable(false)
+
+            SettingsCard {
+                VStack(spacing: 0) {
+                    modelRow(
+                        title: "默认助手模型",
+                        icon: "message",
+                        description: "创建新助手时使用，也作为助手模型缺失时的回退。",
+                        providerId: defaultAssistantProviderBinding,
+                        modelId: defaultAssistantModelBinding,
+                        reasoningEffort: defaultAssistantReasoningBinding
+                    )
+                    Divider()
+                    modelRow(
+                        title: "快速模型",
+                        icon: "hare",
+                        description: "快捷助手与轻量任务使用的模型。",
+                        providerId: quickProviderBinding,
+                        modelId: quickModelBinding,
+                        reasoningEffort: quickReasoningBinding
+                    )
+                    Divider()
+                    modelRow(
+                        title: "翻译模型",
+                        icon: "character.book.closed",
+                        description: "划词助手执行翻译动作时使用的模型。",
+                        providerId: translationProviderBinding,
+                        modelId: translationModelBinding,
+                        reasoningEffort: translationReasoningBinding
+                    )
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("保存默认模型设置") {
+                    appState.persistConfiguration()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.justAccent)
+                .focusable(false)
+            }
         }
         .padding(28)
-        .frame(maxWidth: 920, alignment: .leading)
+        .frame(maxWidth: 1040, alignment: .leading)
     }
 
     private var defaultAssistantProviderBinding: Binding<UUID> {
@@ -853,6 +873,13 @@ private struct DefaultModelPane: View {
             set: { value in
                 appState.preferences.defaultAssistantModelId = value
             }
+        )
+    }
+
+    private var defaultAssistantReasoningBinding: Binding<ReasoningEffort> {
+        Binding(
+            get: { appState.preferences.defaultAssistantReasoningEffort },
+            set: { appState.preferences.defaultAssistantReasoningEffort = $0 }
         )
     }
 
@@ -875,6 +902,13 @@ private struct DefaultModelPane: View {
         )
     }
 
+    private var quickReasoningBinding: Binding<ReasoningEffort> {
+        Binding(
+            get: { appState.preferences.quickReasoningEffort },
+            set: { appState.preferences.quickReasoningEffort = $0 }
+        )
+    }
+
     private var translationProviderBinding: Binding<UUID> {
         Binding(
             get: { appState.translationModelSelection.provider.id },
@@ -894,28 +928,46 @@ private struct DefaultModelPane: View {
         )
     }
 
-    private func modelCard(
+    private var translationReasoningBinding: Binding<ReasoningEffort> {
+        Binding(
+            get: { appState.preferences.translationReasoningEffort },
+            set: { appState.preferences.translationReasoningEffort = $0 }
+        )
+    }
+
+    private func modelRow(
         title: String,
         icon: String,
         description: String,
         providerId: Binding<UUID>,
-        modelId: Binding<String>
+        modelId: Binding<String>,
+        reasoningEffort: Binding<ReasoningEffort>
     ) -> some View {
-        SettingsCard {
-            HStack(alignment: .top, spacing: 20) {
-                VStack(alignment: .leading, spacing: 10) {
-                    settingTitle(title, icon: icon)
-                    Text(description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+        HStack(alignment: .center, spacing: 18) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.justAccent)
+                .frame(width: 28, height: 28)
 
-                ModelSelectionControl(providerId: providerId, modelId: modelId)
-                    .frame(width: 520)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(title)
+                    .font(.system(size: 15, weight: .bold))
+                Text(description)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            ModelSelectionControl(
+                providerId: providerId,
+                modelId: modelId,
+                reasoningEffort: reasoningEffort
+            )
+            .frame(width: 600)
         }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
     }
 
     private func initialModel(for providerId: UUID, currentModel: String) -> String {
@@ -933,22 +985,39 @@ private struct ModelSelectionControl: View {
     @EnvironmentObject private var appState: AppState
     @Binding var providerId: UUID
     @Binding var modelId: String
+    @Binding var reasoningEffort: ReasoningEffort
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("模型服务", selection: providerSelection) {
-                ForEach(appState.providers) { provider in
-                    Text(provider.name).tag(provider.id)
+        HStack(alignment: .top, spacing: 12) {
+            controlColumn("模型服务", width: 150) {
+                Picker("模型服务", selection: providerSelection) {
+                    ForEach(appState.providers) { provider in
+                        Text(provider.name).tag(provider.id)
+                    }
                 }
+                .labelsHidden()
             }
 
-            Picker("模型", selection: $modelId) {
-                ForEach(provider.models, id: \.self) { model in
-                    Text(model).tag(model)
+            controlColumn("模型", width: 260) {
+                Picker("模型", selection: $modelId) {
+                    ForEach(provider.models, id: \.self) { model in
+                        Text(model).tag(model)
+                    }
                 }
+                .labelsHidden()
+                .disabled(provider.models.isEmpty)
             }
-            .disabled(provider.models.isEmpty)
+
+            controlColumn("思考等级", width: 130) {
+                Picker("思考等级", selection: $reasoningEffort) {
+                    ForEach(ReasoningEffort.allCases) { effort in
+                        Text(effort.displayName).tag(effort)
+                    }
+                }
+                .labelsHidden()
+            }
         }
+        .pickerStyle(.menu)
     }
 
     private var provider: ModelProvider {
@@ -966,6 +1035,20 @@ private struct ModelSelectionControl: View {
                 }
             }
         )
+    }
+
+    private func controlColumn<Content: View>(
+        _ title: String,
+        width: CGFloat,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            content()
+        }
+        .frame(width: width, alignment: .leading)
     }
 }
 

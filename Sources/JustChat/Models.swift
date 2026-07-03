@@ -405,10 +405,13 @@ struct AppPreferences: Codable, Hashable, Sendable {
   var chatFontSize: Double
   var defaultAssistantProviderId: UUID?
   var defaultAssistantModelId: String
+  var defaultAssistantReasoningEffort: ReasoningEffort
   var quickModelProviderId: UUID?
   var quickModelId: String
+  var quickReasoningEffort: ReasoningEffort
   var translationModelProviderId: UUID?
   var translationModelId: String
+  var translationReasoningEffort: ReasoningEffort
   var quickAssistantEnabled: Bool
   var quickAssistantHotKey: String
   var quickAssistantReadsClipboard: Bool
@@ -427,10 +430,13 @@ struct AppPreferences: Codable, Hashable, Sendable {
     chatFontSize: Double = 15,
     defaultAssistantProviderId: UUID? = nil,
     defaultAssistantModelId: String = "",
+    defaultAssistantReasoningEffort: ReasoningEffort = .automatic,
     quickModelProviderId: UUID? = nil,
     quickModelId: String = "",
+    quickReasoningEffort: ReasoningEffort = .automatic,
     translationModelProviderId: UUID? = nil,
     translationModelId: String = "",
+    translationReasoningEffort: ReasoningEffort = .automatic,
     quickAssistantEnabled: Bool = true,
     quickAssistantHotKey: String = "Command+Shift+Space",
     quickAssistantReadsClipboard: Bool = true,
@@ -448,10 +454,13 @@ struct AppPreferences: Codable, Hashable, Sendable {
     self.chatFontSize = chatFontSize
     self.defaultAssistantProviderId = defaultAssistantProviderId
     self.defaultAssistantModelId = defaultAssistantModelId
+    self.defaultAssistantReasoningEffort = defaultAssistantReasoningEffort
     self.quickModelProviderId = quickModelProviderId
     self.quickModelId = quickModelId
+    self.quickReasoningEffort = quickReasoningEffort
     self.translationModelProviderId = translationModelProviderId
     self.translationModelId = translationModelId
+    self.translationReasoningEffort = translationReasoningEffort
     self.quickAssistantEnabled = quickAssistantEnabled
     self.quickAssistantHotKey = quickAssistantHotKey
     self.quickAssistantReadsClipboard = quickAssistantReadsClipboard
@@ -477,12 +486,18 @@ struct AppPreferences: Codable, Hashable, Sendable {
         UUID.self, forKey: .defaultAssistantProviderId),
       defaultAssistantModelId: try container.decodeIfPresent(
         String.self, forKey: .defaultAssistantModelId) ?? "",
+      defaultAssistantReasoningEffort: try container.decodeIfPresent(
+        ReasoningEffort.self, forKey: .defaultAssistantReasoningEffort) ?? .automatic,
       quickModelProviderId: try container.decodeIfPresent(UUID.self, forKey: .quickModelProviderId),
       quickModelId: try container.decodeIfPresent(String.self, forKey: .quickModelId) ?? "",
+      quickReasoningEffort: try container.decodeIfPresent(
+        ReasoningEffort.self, forKey: .quickReasoningEffort) ?? .automatic,
       translationModelProviderId: try container.decodeIfPresent(
         UUID.self, forKey: .translationModelProviderId),
       translationModelId: try container.decodeIfPresent(String.self, forKey: .translationModelId)
         ?? "",
+      translationReasoningEffort: try container.decodeIfPresent(
+        ReasoningEffort.self, forKey: .translationReasoningEffort) ?? .automatic,
       quickAssistantEnabled: try container.decodeIfPresent(
         Bool.self, forKey: .quickAssistantEnabled) ?? true,
       quickAssistantHotKey: try container.decodeIfPresent(
@@ -514,10 +529,13 @@ struct AppPreferences: Codable, Hashable, Sendable {
     chatFontSize: 15,
     defaultAssistantProviderId: nil,
     defaultAssistantModelId: "",
+    defaultAssistantReasoningEffort: .automatic,
     quickModelProviderId: nil,
     quickModelId: "",
+    quickReasoningEffort: .automatic,
     translationModelProviderId: nil,
     translationModelId: "",
+    translationReasoningEffort: .automatic,
     quickAssistantEnabled: true,
     quickAssistantHotKey: "Command+Shift+Space",
     quickAssistantReadsClipboard: true,

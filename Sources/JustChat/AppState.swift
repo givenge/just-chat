@@ -292,6 +292,7 @@ final class AppState: ObservableObject {
       maxTokens: 4096,
       isWebSearchEnabled: true,
       isVisionEnabled: false,
+      reasoningEffort: preferences.defaultAssistantReasoningEffort,
       quickTemplates: [
         PromptTemplate(id: UUID(), title: "翻译", prompt: "翻译为简体中文："),
         PromptTemplate(id: UUID(), title: "总结", prompt: "总结以下内容："),
@@ -579,9 +580,14 @@ final class AppState: ObservableObject {
 
   func showQuickAssistant() {
     guard preferences.quickAssistantEnabled else { return }
+    let quickSelection = quickModelSelection
     quickAssistantController.show(
-      assistant: selectedAssistant,
-      provider: activeProvider,
+      assistant: assistantForFloatingPanel(
+        providerId: quickSelection.provider.id,
+        modelId: quickSelection.modelId,
+        reasoningEffort: preferences.quickReasoningEffort
+      ),
+      provider: quickSelection.provider,
       searchSettings: searchSettings,
       preferences: preferences
     )
@@ -589,9 +595,14 @@ final class AppState: ObservableObject {
 
   func toggleQuickAssistant() {
     guard preferences.quickAssistantEnabled else { return }
+    let quickSelection = quickModelSelection
     quickAssistantController.toggle(
-      assistant: selectedAssistant,
-      provider: activeProvider,
+      assistant: assistantForFloatingPanel(
+        providerId: quickSelection.provider.id,
+        modelId: quickSelection.modelId,
+        reasoningEffort: preferences.quickReasoningEffort
+      ),
+      provider: quickSelection.provider,
       searchSettings: searchSettings,
       preferences: preferences
     )
@@ -608,6 +619,7 @@ final class AppState: ObservableObject {
       provider: activeProvider,
       translationProvider: translationSelection.provider,
       translationModelId: translationSelection.modelId,
+      translationReasoningEffort: preferences.translationReasoningEffort,
       searchSettings: searchSettings,
       preferences: preferences
     )
@@ -624,6 +636,7 @@ final class AppState: ObservableObject {
       provider: activeProvider,
       translationProvider: translationSelection.provider,
       translationModelId: translationSelection.modelId,
+      translationReasoningEffort: preferences.translationReasoningEffort,
       searchSettings: searchSettings,
       preferences: preferences
     )
@@ -661,6 +674,18 @@ final class AppState: ObservableObject {
   func refreshFloatingPanelAppearance() {
     quickAssistantController.updateAppearance(preferences: preferences)
     selectionAssistantController.updateAppearance(preferences: preferences)
+  }
+
+  private func assistantForFloatingPanel(
+    providerId: UUID,
+    modelId: String,
+    reasoningEffort: ReasoningEffort
+  ) -> AssistantProfile {
+    var assistant = selectedAssistant
+    assistant.providerId = providerId
+    assistant.modelId = modelId
+    assistant.reasoningEffort = reasoningEffort
+    return assistant
   }
 
   private func provider(for assistant: AssistantProfile) -> ModelProvider {
@@ -946,6 +971,7 @@ final class AppState: ObservableObject {
     titleAssistant.systemPrompt = "你只负责为对话生成简短话题标题。只输出标题本身。"
     titleAssistant.providerId = quickSelection.provider.id
     titleAssistant.modelId = quickSelection.modelId
+    titleAssistant.reasoningEffort = preferences.quickReasoningEffort
     titleAssistant.maxTokens = 80
     titleAssistant.isWebSearchEnabled = false
 

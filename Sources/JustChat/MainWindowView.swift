@@ -1202,62 +1202,70 @@ private struct FlexWrap: Layout {
 }
 
 struct ThinkingBlock: View {
-  var id: UUID
-  var text: String
-  var isStreaming: Bool
-  @State private var isExpanded: Bool
+    var id: UUID
+    var text: String
+    var isStreaming: Bool
+    var collapseWhenStreamingEnds: Bool
+    @State private var isExpanded: Bool
 
-  init(id: UUID, text: String, isStreaming: Bool) {
-    self.id = id
-    self.text = text
-    self.isStreaming = isStreaming
-    _isExpanded = State(initialValue: isStreaming)
-  }
-
-  var body: some View {
-    VStack(alignment: .leading, spacing: 0) {
-      Button {
-        withAnimation(.easeInOut(duration: 0.18)) {
-          isExpanded.toggle()
-        }
-      } label: {
-        HStack(spacing: 8) {
-          Image(systemName: "chevron.right")
-            .font(.system(size: 12, weight: .semibold))
-            .rotationEffect(.degrees(isExpanded ? 90 : 0))
-          Image(systemName: "brain.head.profile")
-            .font(.system(size: 13, weight: .medium))
-          Text(isStreaming ? "思考中" : "思考")
-            .font(.system(size: 13, weight: .semibold))
-          if isStreaming {
-            MiniTypingIndicator()
-          }
-          Spacer(minLength: 0)
-        }
-        .foregroundStyle(.secondary)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .contentShape(Rectangle())
-      }
-      .buttonStyle(.plain)
-      .focusable(false)
-
-      if isExpanded {
-        SmoothStreamingTextView(text: text, isStreaming: isStreaming)
-          .padding(.horizontal, 12)
-          .padding(.bottom, 10)
-      }
+    init(id: UUID, text: String, isStreaming: Bool, collapseWhenStreamingEnds: Bool = false) {
+        self.id = id
+        self.text = text
+        self.isStreaming = isStreaming
+        self.collapseWhenStreamingEnds = collapseWhenStreamingEnds
+        _isExpanded = State(initialValue: isStreaming)
     }
-    .background(
-      RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
-        .fill(Color.justControlBackground.opacity(0.6))
-    )
-    .overlay(
-      RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
-        .stroke(Color.justBorderSoft, lineWidth: 1)
-    )
-  }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    Image(systemName: "brain.head.profile")
+                        .font(.system(size: 13, weight: .medium))
+                    Text(isStreaming ? "思考中" : "思考")
+                        .font(.system(size: 13, weight: .semibold))
+                    if isStreaming {
+                        MiniTypingIndicator()
+                    }
+                    Spacer(minLength: 0)
+                }
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .focusable(false)
+
+            if isExpanded {
+                SmoothStreamingTextView(text: text, isStreaming: isStreaming)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                .fill(Color.justControlBackground.opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                .stroke(Color.justBorderSoft, lineWidth: 1)
+        )
+        .onChange(of: isStreaming) {
+            guard collapseWhenStreamingEnds, !isStreaming else { return }
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isExpanded = false
+            }
+        }
+    }
 }
 
 private struct MiniTypingIndicator: View {
