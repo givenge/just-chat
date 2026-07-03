@@ -43,7 +43,7 @@ enum Defaults {
                 modelId: "gpt-5.4",
                 temperature: 0.7,
                 maxTokens: 4096,
-                isWebSearchEnabled: true,
+                isWebSearchEnabled: false,
                 quickTemplates: [
                     PromptTemplate(id: UUID(), title: "翻译", prompt: "翻译为简体中文，保持原意："),
                     PromptTemplate(id: UUID(), title: "总结", prompt: "用要点总结这段内容："),

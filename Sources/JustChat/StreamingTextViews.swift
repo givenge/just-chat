@@ -12,6 +12,7 @@ final class SmoothStreamPlayer: ObservableObject {
     private var pauseFramesRemaining = 0
     private let frameIntervalMilliseconds: Int
     private let automaticallyStartsPlayback: Bool
+    private let postStreamDrainMilliseconds = 800
 
     init(
         initialText: String,
@@ -123,7 +124,8 @@ final class SmoothStreamPlayer: ObservableObject {
         guard pendingCount > 0 else { return 0 }
 
         if streamDone {
-            return min(pendingCount, max(4, min(32, pendingCount / 6)))
+            let framesToDrain = max(1, postStreamDrainMilliseconds / frameIntervalMilliseconds)
+            return max(5, Int(ceil(Double(pendingCount) / Double(framesToDrain))))
         }
 
         switch pendingCount {
@@ -135,8 +137,12 @@ final class SmoothStreamPlayer: ObservableObject {
             return 4
         case 121...240:
             return 8
+        case 241...500:
+            return 12
+        case 501...900:
+            return 18
         default:
-            return min(24, max(12, pendingCount / 24))
+            return min(48, max(24, pendingCount / 30))
         }
     }
 
@@ -159,7 +165,7 @@ struct SmoothStreamingMarkdownView: View {
     let content: String
     let isStreaming: Bool
     var fontSize: CGFloat = 15
-    var frameIntervalMilliseconds: Int = 33
+    var frameIntervalMilliseconds: Int = 16
 
     @StateObject private var player: SmoothStreamPlayer
 
@@ -167,14 +173,14 @@ struct SmoothStreamingMarkdownView: View {
         content: String,
         isStreaming: Bool,
         fontSize: CGFloat = 15,
-        frameIntervalMilliseconds: Int = 33
+        frameIntervalMilliseconds: Int = 16
     ) {
         self.content = content
         self.isStreaming = isStreaming
         self.fontSize = fontSize
         self.frameIntervalMilliseconds = frameIntervalMilliseconds
         _player = StateObject(wrappedValue: SmoothStreamPlayer(
-            initialText: content,
+            initialText: isStreaming ? "" : content,
             frameIntervalMilliseconds: frameIntervalMilliseconds
         ))
     }
@@ -189,53 +195,6 @@ struct SmoothStreamingMarkdownView: View {
             }
             .onChange(of: isStreaming) {
                 player.update(accumulatedText: content, isStreaming: isStreaming)
-            }
-    }
-}
-
-struct SmoothStreamingTextView: View {
-    let text: String
-    let isStreaming: Bool
-    var fontSize: CGFloat = 13
-    var foregroundStyle: AnyShapeStyle = AnyShapeStyle(.secondary)
-    var lineSpacing: CGFloat = 4
-    var topPadding: CGFloat = 8
-
-    @StateObject private var player: SmoothStreamPlayer
-
-    init(
-        text: String,
-        isStreaming: Bool,
-        fontSize: CGFloat = 13,
-        foregroundStyle: AnyShapeStyle = AnyShapeStyle(.secondary),
-        lineSpacing: CGFloat = 4,
-        topPadding: CGFloat = 8
-    ) {
-        self.text = text
-        self.isStreaming = isStreaming
-        self.fontSize = fontSize
-        self.foregroundStyle = foregroundStyle
-        self.lineSpacing = lineSpacing
-        self.topPadding = topPadding
-        _player = StateObject(wrappedValue: SmoothStreamPlayer(initialText: text, frameIntervalMilliseconds: 16))
-    }
-
-    var body: some View {
-        Text(player.displayedText)
-            .font(.system(size: fontSize))
-            .foregroundStyle(foregroundStyle)
-            .lineSpacing(lineSpacing)
-            .textSelection(.enabled)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, topPadding)
-            .onAppear {
-                player.update(accumulatedText: text, isStreaming: isStreaming)
-            }
-            .onChange(of: text) {
-                player.update(accumulatedText: text, isStreaming: isStreaming)
-            }
-            .onChange(of: isStreaming) {
-                player.update(accumulatedText: text, isStreaming: isStreaming)
             }
     }
 }

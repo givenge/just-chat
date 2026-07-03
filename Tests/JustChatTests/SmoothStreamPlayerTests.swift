@@ -24,6 +24,7 @@ final class SmoothStreamPlayerTests: XCTestCase {
 
         let firstFrameCount = player.advanceOneFrame()
         XCTAssertGreaterThan(firstFrameCount, 0)
+        XCTAssertLessThanOrEqual(firstFrameCount, 8)
         XCTAssertLessThan(player.displayedText.count, fullText.count)
 
         var frameCount = 1

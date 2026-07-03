@@ -512,12 +512,14 @@ private struct QuickAssistantPanel: View {
     @State private var reasoning = ""
     @State private var citations: [Citation] = []
     @State private var isRunning = false
+    @State private var isDisplayStreaming = false
     @State private var isPinned = false
     @State private var selectedFeatureIndex = 0
     @State private var activeFeature: QuickAssistantFeature?
     @State private var submittedPrompt = ""
     @State private var responseId = UUID()
     @State private var runTask: Task<Void, Never>?
+    @State private var displayStreamingTask: Task<Void, Never>?
     @State private var focusToken = UUID()
     @State private var isInputFocused = false
     @State private var thinkTagParser = ThinkTagParser()
@@ -647,6 +649,7 @@ private struct QuickAssistantPanel: View {
                     result: result,
                     citations: citations,
                     isRunning: isRunning,
+                    isDisplayStreaming: isDisplayStreaming,
                     onBack: returnToHome,
                     onCopy: copyResult
                 )
@@ -764,6 +767,7 @@ private struct QuickAssistantPanel: View {
         reasoning = ""
         citations = []
         thinkTagParser = ThinkTagParser()
+        stopDisplayStreaming()
         isRunning = true
         runTask?.cancel()
         runTask = Task {
@@ -773,6 +777,7 @@ private struct QuickAssistantPanel: View {
                 await MainActor.run {
                     result = error.localizedDescription
                     isRunning = false
+                    stopDisplayStreaming()
                 }
             }
         }
@@ -786,6 +791,7 @@ private struct QuickAssistantPanel: View {
         reasoning = ""
         citations = []
         thinkTagParser = ThinkTagParser()
+        stopDisplayStreaming()
         activeFeature = nil
         focusToken = UUID()
     }
@@ -854,8 +860,14 @@ private struct QuickAssistantPanel: View {
             let parsed = thinkTagParser.append(text)
             result += parsed.content
             reasoning += parsed.reasoning
+            if !parsed.content.isEmpty || !parsed.reasoning.isEmpty {
+                markDisplayStreaming()
+            }
         case .reasoningDelta(let text):
             reasoning += text
+            if !text.isEmpty {
+                markDisplayStreaming()
+            }
         case .citation(let citation):
             citations.append(citation)
         case .usage:
@@ -864,8 +876,36 @@ private struct QuickAssistantPanel: View {
             let parsed = thinkTagParser.finish()
             result += parsed.content
             reasoning += parsed.reasoning
+            if !parsed.content.isEmpty || !parsed.reasoning.isEmpty {
+                markDisplayStreaming()
+            }
             isRunning = false
+            scheduleDisplayStreamingEnd()
         }
+    }
+
+    private func markDisplayStreaming() {
+        displayStreamingTask?.cancel()
+        displayStreamingTask = nil
+        isDisplayStreaming = true
+    }
+
+    private func scheduleDisplayStreamingEnd() {
+        guard isDisplayStreaming else { return }
+        displayStreamingTask?.cancel()
+        let milliseconds = min(12_000, max(1_200, (result.count + reasoning.count) * 2))
+        displayStreamingTask = Task {
+            try? await Task.sleep(for: .milliseconds(milliseconds))
+            await MainActor.run {
+                stopDisplayStreaming()
+            }
+        }
+    }
+
+    private func stopDisplayStreaming() {
+        displayStreamingTask?.cancel()
+        displayStreamingTask = nil
+        isDisplayStreaming = false
     }
 }
 
@@ -1072,6 +1112,7 @@ private struct QuickAssistantResultView: View {
     var result: String
     var citations: [Citation]
     var isRunning: Bool
+    var isDisplayStreaming: Bool
     var onBack: () -> Void
     var onCopy: () -> Void
 
@@ -1100,13 +1141,12 @@ private struct QuickAssistantResultView: View {
                             ThinkingBlock(
                                 id: responseId,
                                 text: reasoning,
-                                isStreaming: isRunning && result.isEmpty,
-                                collapseWhenStreamingEnds: true
+                                isStreaming: isDisplayStreaming && result.isEmpty
                             )
                         }
 
                         // Result.
-                        if isRunning && result.isEmpty {
+                        if isRunning && result.isEmpty && reasoning.isEmpty {
                             HStack(spacing: 8) {
                                 ProgressView()
                                     .scaleEffect(0.7)
@@ -1122,7 +1162,7 @@ private struct QuickAssistantResultView: View {
                         } else {
                             SmoothStreamingMarkdownView(
                                 content: result,
-                                isStreaming: isRunning,
+                                isStreaming: isRunning || isDisplayStreaming,
                                 frameIntervalMilliseconds: 16
                             )
                         }
@@ -1363,9 +1403,11 @@ private struct SelectionActionPanel: View {
     @State private var reasoning = ""
     @State private var citations: [Citation] = []
     @State private var isRunning = false
+    @State private var isDisplayStreaming = false
     @State private var question = ""
     @State private var responseId = UUID()
     @State private var thinkTagParser = ThinkTagParser()
+    @State private var displayStreamingTask: Task<Void, Never>?
     @FocusState private var focused: Bool
 
     private var hasContent: Bool {
@@ -1556,7 +1598,8 @@ private struct SelectionActionPanel: View {
                     reasoning: reasoning,
                     result: result,
                     citations: citations,
-                    isRunning: isRunning
+                    isRunning: isRunning,
+                    isDisplayStreaming: isDisplayStreaming
                 )
             }
             .padding(20)
@@ -1599,6 +1642,7 @@ private struct SelectionActionPanel: View {
         reasoning = ""
         citations = []
         thinkTagParser = ThinkTagParser()
+        stopDisplayStreaming()
         isRunning = true
         Task {
             do {
@@ -1607,6 +1651,7 @@ private struct SelectionActionPanel: View {
                 await MainActor.run {
                     result = error.localizedDescription
                     isRunning = false
+                    stopDisplayStreaming()
                 }
             }
         }
@@ -1669,8 +1714,14 @@ private struct SelectionActionPanel: View {
             let parsed = thinkTagParser.append(text)
             result += parsed.content
             reasoning += parsed.reasoning
+            if !parsed.content.isEmpty || !parsed.reasoning.isEmpty {
+                markDisplayStreaming()
+            }
         case .reasoningDelta(let text):
             reasoning += text
+            if !text.isEmpty {
+                markDisplayStreaming()
+            }
         case .citation(let citation):
             citations.append(citation)
         case .usage:
@@ -1679,8 +1730,36 @@ private struct SelectionActionPanel: View {
             let parsed = thinkTagParser.finish()
             result += parsed.content
             reasoning += parsed.reasoning
+            if !parsed.content.isEmpty || !parsed.reasoning.isEmpty {
+                markDisplayStreaming()
+            }
             isRunning = false
+            scheduleDisplayStreamingEnd()
         }
+    }
+
+    private func markDisplayStreaming() {
+        displayStreamingTask?.cancel()
+        displayStreamingTask = nil
+        isDisplayStreaming = true
+    }
+
+    private func scheduleDisplayStreamingEnd() {
+        guard isDisplayStreaming else { return }
+        displayStreamingTask?.cancel()
+        let milliseconds = min(12_000, max(1_200, (result.count + reasoning.count) * 2))
+        displayStreamingTask = Task {
+            try? await Task.sleep(for: .milliseconds(milliseconds))
+            await MainActor.run {
+                stopDisplayStreaming()
+            }
+        }
+    }
+
+    private func stopDisplayStreaming() {
+        displayStreamingTask?.cancel()
+        displayStreamingTask = nil
+        isDisplayStreaming = false
     }
 }
 
@@ -1691,6 +1770,7 @@ private struct SelectionResultView: View {
     var result: String
     var citations: [Citation]
     var isRunning: Bool
+    var isDisplayStreaming: Bool
 
     var body: some View {
         ScrollViewReader { proxy in
@@ -1700,12 +1780,11 @@ private struct SelectionResultView: View {
                         ThinkingBlock(
                             id: responseId,
                             text: reasoning,
-                            isStreaming: isRunning && result.isEmpty,
-                            collapseWhenStreamingEnds: true
+                            isStreaming: isDisplayStreaming && result.isEmpty
                         )
                     }
 
-                    if isRunning && result.isEmpty {
+                    if isRunning && result.isEmpty && reasoning.isEmpty {
                         HStack(spacing: 6) {
                             ProgressView()
                                 .scaleEffect(0.6)
@@ -1721,7 +1800,7 @@ private struct SelectionResultView: View {
                     } else {
                         SmoothStreamingMarkdownView(
                             content: result,
-                            isStreaming: isRunning,
+                            isStreaming: isRunning || isDisplayStreaming,
                             frameIntervalMilliseconds: 16
                         )
                     }

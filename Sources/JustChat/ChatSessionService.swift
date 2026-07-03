@@ -1,5 +1,20 @@
 import Foundation
 
+private struct OpenAIToolCall {
+    var id = ""
+    var name = ""
+    var arguments = ""
+
+    var query: String? {
+        guard name == "web_search",
+              let data = arguments.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let query = json["query"] as? String
+        else { return nil }
+        return query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
 struct ChatSessionService: Sendable {
     var tavily = TavilySearchService()
     var session: URLSession = .shared
@@ -23,40 +38,22 @@ struct ChatSessionService: Sendable {
         _ request: ChatRequest,
         onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
     ) async throws {
-        var decisionRequest = request
-        decisionRequest.stream = false
-        decisionRequest.searchResults = []
+        var toolRequest = request
+        toolRequest.searchResults = []
 
-        let apiKey = try readAPIKey(for: decisionRequest.provider)
-        let adapter = chatAdapter(for: decisionRequest.provider.kind)
-        let decisionURLRequest = try adapter.makeRequest(decisionRequest, apiKey: apiKey)
-        let (data, response) = try await session.data(for: decisionURLRequest)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            let body = String(data: data, encoding: .utf8) ?? ""
-            throw ChatSessionError.httpStatus(http.statusCode, body)
-        }
+        let apiKey = try readAPIKey(for: toolRequest.provider)
+        let adapter = chatAdapter(for: toolRequest.provider.kind)
+        let toolURLRequest = try adapter.makeRequest(toolRequest, apiKey: apiKey)
+        let toolCalls = try await runOpenAITavilyToolStream(
+            toolURLRequest,
+            adapter: adapter,
+            onEvent: onEvent
+        )
 
-        let queries = webSearchQueries(from: data)
+        let queries = toolCalls.compactMap(\.query).filter { !$0.isEmpty }
         guard !queries.isEmpty else {
-            let events = adapter.parseResponseBody(data)
-            guard !events.isEmpty else {
-                if let providerError = providerErrorMessage(from: data) {
-                    throw ChatAdapterError.providerError(providerError)
-                }
-                throw ChatAdapterError.unusableResponse(responsePreview(String(data: data, encoding: .utf8) ?? ""))
-            }
-            for event in events {
-                await onEvent(event)
-                if case .completed = event { return }
-            }
             await onEvent(.completed)
             return
-        }
-
-        for event in adapter.parseResponseBody(data) {
-            if case .reasoningDelta = event {
-                await onEvent(event)
-            }
         }
 
         let results = try await runTavilySearches(queries: queries)
@@ -74,6 +71,118 @@ struct ChatSessionService: Sendable {
         finalRequest.searchResults = results
         finalRequest = injectSearchContextIfNeeded(finalRequest)
         try await runStreamingRequest(finalRequest, onEvent: onEvent)
+    }
+
+    private func runOpenAITavilyToolStream(
+        _ urlRequest: URLRequest,
+        adapter: ChatModelAdapter,
+        onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
+    ) async throws -> [OpenAIToolCall] {
+        let (bytes, response) = try await session.bytes(for: urlRequest)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            let body = String(data: try await collectData(from: bytes), encoding: .utf8) ?? ""
+            throw ChatSessionError.httpStatus(http.statusCode, body)
+        }
+
+        var eventName: String?
+        var dataLines: [String] = []
+        var toolCalls: [Int: OpenAIToolCall] = [:]
+
+        func flushEvent() async -> Bool {
+            guard !dataLines.isEmpty else {
+                eventName = nil
+                return false
+            }
+
+            let event = SSEEvent(event: eventName, data: dataLines.joined(separator: "\n"))
+            eventName = nil
+            dataLines = []
+
+            collectToolCalls(from: event, into: &toolCalls)
+            guard let chatEvent = adapter.parseEvent(event) else {
+                return false
+            }
+            if case .completed = chatEvent {
+                return true
+            }
+            await onEvent(chatEvent)
+            return false
+        }
+
+        func processLine(_ line: String) async -> Bool {
+            if line.isEmpty {
+                return await flushEvent()
+            }
+            if line.hasPrefix(":") {
+                return false
+            }
+            if line.hasPrefix("event:") {
+                if await flushEvent() { return true }
+                eventName = String(line.dropFirst("event:".count)).trimmingCharacters(in: .whitespaces)
+                return false
+            }
+            if line.hasPrefix("data:") {
+                dataLines.append(String(line.dropFirst("data:".count)).trimmingCharacters(in: .whitespaces))
+            }
+            return false
+        }
+
+        var lineData = Data()
+        for try await byte in bytes {
+            if byte == 10 {
+                var line = String(data: lineData, encoding: .utf8) ?? ""
+                if line.last == "\r" {
+                    line.removeLast()
+                }
+                lineData.removeAll(keepingCapacity: true)
+                if await processLine(line) { break }
+            } else {
+                lineData.append(byte)
+            }
+        }
+
+        if !lineData.isEmpty {
+            var line = String(data: lineData, encoding: .utf8) ?? ""
+            if line.last == "\r" {
+                line.removeLast()
+            }
+            _ = await processLine(line)
+        }
+        _ = await flushEvent()
+        return toolCalls.keys.sorted().compactMap { toolCalls[$0] }
+    }
+
+    private func collectToolCalls(from event: SSEEvent, into toolCalls: inout [Int: OpenAIToolCall]) {
+        guard event.data != "[DONE]",
+              let data = event.data.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let delta = choices.first?["delta"] as? [String: Any],
+              let chunks = delta["tool_calls"] as? [[String: Any]]
+        else { return }
+
+        for chunk in chunks {
+            let index = toolCallIndex(chunk["index"]) ?? 0
+            var call = toolCalls[index] ?? OpenAIToolCall()
+            if let id = chunk["id"] as? String {
+                call.id = id
+            }
+            if let function = chunk["function"] as? [String: Any] {
+                if let name = function["name"] as? String {
+                    call.name = name
+                }
+                if let arguments = function["arguments"] as? String {
+                    call.arguments += arguments
+                }
+            }
+            toolCalls[index] = call
+        }
+    }
+
+    private func toolCallIndex(_ value: Any?) -> Int? {
+        if let value = value as? Int { return value }
+        if let value = value as? Double { return Int(value) }
+        return nil
     }
 
     private func runStreamingRequest(

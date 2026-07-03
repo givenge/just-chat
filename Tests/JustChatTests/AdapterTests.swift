@@ -164,6 +164,24 @@ final class AdapterTests: XCTestCase {
     XCTAssertEqual(adapter.parseEvent(contentEvent), .delta("你好"))
   }
 
+  func testOpenAIChatCompletionsPreservesWhitespaceOnlyDelta() {
+    let event = SSEEvent(
+      event: nil,
+      data: #"{"choices":[{"delta":{"content":"\n  "},"finish_reason":null}]}"#
+    )
+
+    XCTAssertEqual(OpenAIChatCompletionsAdapter().parseEvent(event), .delta("\n  "))
+  }
+
+  func testOpenAIChatCompletionsParsesReasoningDeltaAlias() {
+    let event = SSEEvent(
+      event: nil,
+      data: #"{"choices":[{"delta":{"reasoning":"hidden"},"finish_reason":null}]}"#
+    )
+
+    XCTAssertEqual(OpenAIChatCompletionsAdapter().parseEvent(event), .reasoningDelta("hidden"))
+  }
+
   func testOpenAIChatCompletionsParsesNonStreamingBody() throws {
     let data = Data(
       #"""

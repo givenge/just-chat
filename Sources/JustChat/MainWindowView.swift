@@ -348,6 +348,7 @@ private struct TopicRow: View {
 
 private struct AssistantsHomeList: View {
   @EnvironmentObject private var appState: AppState
+  @State private var draggingAssistant: AssistantProfile?
 
   var body: some View {
     VStack(alignment: .leading, spacing: 12) {
@@ -368,14 +369,52 @@ private struct AssistantsHomeList: View {
       .padding(.top, 6)
 
       ScrollView {
-        LazyVStack(spacing: 8) {
+        VStack(spacing: 8) {
           ForEach(appState.assistants) { assistant in
             AssistantRow(assistant: assistant)
+              .opacity(draggingAssistant?.id == assistant.id ? 0.0 : 1.0)
+              .onDrag {
+                draggingAssistant = assistant
+                return NSItemProvider(object: assistant.id.uuidString as NSString)
+              }
+              .onDrop(of: [.text], delegate: AssistantDropDelegate(
+                assistant: assistant,
+                assistants: appState.assistants,
+                draggingAssistant: $draggingAssistant,
+                onMove: appState.moveAssistant
+              ))
           }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 16)
       }
+    }
+  }
+}
+
+private struct AssistantDropDelegate: DropDelegate {
+  let assistant: AssistantProfile
+  let assistants: [AssistantProfile]
+  @Binding var draggingAssistant: AssistantProfile?
+  let onMove: (IndexSet, Int) -> Void
+
+  func performDrop(info: DropInfo) -> Bool {
+    draggingAssistant = nil
+    return true
+  }
+
+  func dropUpdated(info: DropInfo) -> DropProposal? {
+    return DropProposal(operation: .move)
+  }
+
+  func dropEntered(info: DropInfo) {
+    guard let dragging = draggingAssistant,
+          let fromIndex = assistants.firstIndex(where: { $0.id == dragging.id }),
+          let toIndex = assistants.firstIndex(where: { $0.id == assistant.id }),
+          fromIndex != toIndex else { return }
+
+    withAnimation(.easeInOut(duration: 0.2)) {
+      onMove(IndexSet(integer: fromIndex), toIndex > fromIndex ? toIndex + 1 : toIndex)
     }
   }
 }
@@ -405,6 +444,9 @@ private struct AssistantRow: View {
 
         if isSelected {
           Menu {
+            Button("清空话题") {
+              appState.clearTopicsForSelectedAssistant()
+            }
             Button("编辑助手") {
               appState.assistantEditorPresented = true
             }
@@ -440,6 +482,17 @@ private struct AssistantRow: View {
     .buttonStyle(.plain)
     .focusable(false)
     .hoverSurface(radius: Radius.md, opacity: 0.5)
+    .contextMenu {
+      Button("清空话题") {
+        appState.clearTopicsForSelectedAssistant()
+      }
+      Button("编辑助手") {
+        appState.assistantEditorPresented = true
+      }
+      Button("删除助手", role: .destructive) {
+        appState.deleteSelectedAssistant()
+      }
+    }
   }
 }
 
@@ -869,6 +922,9 @@ private struct MessageBubble: View {
 
   private var isUser: Bool { message.role == .user }
   private var fontSize: CGFloat { CGFloat(appState.preferences.chatFontSize) }
+  private var isDisplayStreaming: Bool {
+    message.status == .streaming || appState.displayStreamingMessageIds.contains(message.id)
+  }
 
   var body: some View {
     if isUser {
@@ -928,16 +984,16 @@ private struct MessageBubble: View {
             ThinkingBlock(
               id: message.id,
               text: message.reasoningContent,
-              isStreaming: message.status == .streaming && message.content.isEmpty
+              isStreaming: isDisplayStreaming && message.content.isEmpty
             )
           }
 
-          if message.content.isEmpty && message.status == .streaming {
+          if message.content.isEmpty && message.reasoningContent.isEmpty && message.status == .streaming {
             TypingIndicator()
           } else {
             SmoothStreamingMarkdownView(
               content: message.content,
-              isStreaming: message.status == .streaming,
+              isStreaming: isDisplayStreaming,
               fontSize: fontSize
             )
           }
@@ -1213,15 +1269,13 @@ struct ThinkingBlock: View {
         self.text = text
         self.isStreaming = isStreaming
         self.collapseWhenStreamingEnds = collapseWhenStreamingEnds
-        _isExpanded = State(initialValue: isStreaming)
+        _isExpanded = State(initialValue: false)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.easeInOut(duration: 0.18)) {
-                    isExpanded.toggle()
-                }
+                isExpanded.toggle()
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.right")
@@ -1246,7 +1300,13 @@ struct ThinkingBlock: View {
             .focusable(false)
 
             if isExpanded {
-                SmoothStreamingTextView(text: text, isStreaming: isStreaming)
+                Text(text)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .lineSpacing(4)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, 8)
                     .padding(.horizontal, 12)
                     .padding(.bottom, 10)
             }
@@ -1261,9 +1321,7 @@ struct ThinkingBlock: View {
         )
         .onChange(of: isStreaming) {
             guard collapseWhenStreamingEnds, !isStreaming else { return }
-            withAnimation(.easeInOut(duration: 0.18)) {
-                isExpanded = false
-            }
+            isExpanded = false
         }
     }
 }

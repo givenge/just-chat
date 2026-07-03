@@ -103,7 +103,7 @@ final class AppState: ObservableObject {
   @Published var providers: [ModelProvider]
   @Published var selectedAssistantId: UUID
   @Published var selectedProviderId: UUID
-  @Published var isWebSearchEnabled = true
+  @Published var isWebSearchEnabled = false
   @Published var composerText = ""
   @Published var composerAttachments: [MessageImage] = []
   @Published var isStreaming = false
@@ -112,6 +112,7 @@ final class AppState: ObservableObject {
   @Published var searchSettings: SearchSettings = .default
   @Published var preferences: AppPreferences = .default
   @Published var assistantEditorPresented = false
+  @Published var displayStreamingMessageIds: Set<UUID> = []
 
   let quickAssistantController = QuickAssistantController()
   let selectionAssistantController = SelectionAssistantController()
@@ -130,6 +131,7 @@ final class AppState: ObservableObject {
   private var lastStreamFlushTimes: [UUID: Date] = [:]
   private var streamFlushTasks: [UUID: Task<Void, Never>] = [:]
   private var streamPersistTasks: [UUID: Task<Void, Never>] = [:]
+  private var displayStreamingTasks: [UUID: Task<Void, Never>] = [:]
 
   init() {
     let fallbackProviders = Defaults.providers()
@@ -297,7 +299,7 @@ final class AppState: ObservableObject {
       modelId: selection.modelId,
       temperature: 0.7,
       maxTokens: 4096,
-      isWebSearchEnabled: true,
+      isWebSearchEnabled: false,
       reasoningEffort: preferences.defaultAssistantReasoningEffort,
       quickTemplates: [
         PromptTemplate(id: UUID(), title: "翻译", prompt: "翻译为简体中文："),
@@ -320,6 +322,28 @@ final class AppState: ObservableObject {
     }
     persistConfiguration()
     selectAssistant(selectedAssistantId)
+  }
+
+  func clearTopicsForSelectedAssistant() {
+    do {
+      let topicsToDelete = conversations.filter { $0.assistantId == selectedAssistantId }
+      for topic in topicsToDelete {
+        try store?.deleteConversation(id: topic.id)
+      }
+      conversations = try store?.listConversations() ?? []
+      let newConversation = try store?.createConversation(
+        title: selectedAssistant.name, assistantId: selectedAssistantId)
+      conversations = try store?.listConversations() ?? []
+      selectedConversationId = newConversation?.id
+      loadSelectedConversationMessages()
+    } catch {
+      setStatusMessage(error.localizedDescription)
+    }
+  }
+
+  func moveAssistant(from source: IndexSet, to destination: Int) {
+    assistants.move(fromOffsets: source, toOffset: destination)
+    persistConfiguration()
   }
 
   func addProvider(type: ProviderCatalogType, name: String) {
@@ -765,6 +789,7 @@ final class AppState: ObservableObject {
     }
     guard !content.isEmpty || !reasoning.isEmpty else { return }
 
+    markDisplayStreaming(messageId: messageId)
     pendingStreamCharacterCounts[messageId, default: 0] += content.count + reasoning.count
     let now = Date()
     if lastStreamFlushTimes[messageId] == nil
@@ -867,6 +892,30 @@ final class AppState: ObservableObject {
     thinkTagParsers.removeValue(forKey: messageId)
   }
 
+  private func markDisplayStreaming(messageId: UUID) {
+    displayStreamingTasks[messageId]?.cancel()
+    displayStreamingTasks[messageId] = nil
+    displayStreamingMessageIds.insert(messageId)
+  }
+
+  private func scheduleDisplayStreamingEnd(messageId: UUID, characterCount: Int) {
+    guard displayStreamingMessageIds.contains(messageId) else { return }
+    displayStreamingTasks[messageId]?.cancel()
+    let milliseconds = min(12_000, max(1_200, characterCount * 2))
+    displayStreamingTasks[messageId] = Task { [weak self] in
+      try? await Task.sleep(for: .milliseconds(milliseconds))
+      await MainActor.run {
+        self?.stopDisplayStreaming(messageId: messageId)
+      }
+    }
+  }
+
+  private func stopDisplayStreaming(messageId: UUID) {
+    displayStreamingTasks[messageId]?.cancel()
+    displayStreamingTasks[messageId] = nil
+    displayStreamingMessageIds.remove(messageId)
+  }
+
   private func apply(_ event: ChatStreamEvent, to messageId: UUID) {
     switch event {
     case .delta(let text):
@@ -918,6 +967,10 @@ final class AppState: ObservableObject {
     messages[index].status = .success
     messages[index].updatedAt = Date()
     persistMessageUpdate(messages[index])
+    scheduleDisplayStreamingEnd(
+      messageId: messageId,
+      characterCount: messages[index].content.count + messages[index].reasoningContent.count
+    )
     cleanupStreamState(messageId: messageId)
     isStreaming = false
     currentTask = nil
@@ -932,11 +985,13 @@ final class AppState: ObservableObject {
     messages[index].updatedAt = Date()
     persistMessageUpdate(messages[index])
     cleanupStreamState(messageId: messageId)
+    stopDisplayStreaming(messageId: messageId)
     isStreaming = false
     currentTask = nil
   }
 
   private func markAssistantMessageFailed(_ error: String, messageId: UUID) {
+    flushStreamBuffers(messageId: messageId, finishingThinkTag: true, persistImmediately: true)
     guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
     responseStartTimes.removeValue(forKey: messageId)
     messages[index].content = error
@@ -944,6 +999,7 @@ final class AppState: ObservableObject {
     messages[index].updatedAt = Date()
     persistMessageUpdate(messages[index])
     cleanupStreamState(messageId: messageId)
+    stopDisplayStreaming(messageId: messageId)
     setStatusMessage(error)
     isStreaming = false
     currentTask = nil

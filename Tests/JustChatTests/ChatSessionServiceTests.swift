@@ -5,6 +5,7 @@ import XCTest
 
 final class ChatSessionServiceTests: XCTestCase {
   func testStreamsNamelessMultilineDataEventAsOneSSEEvent() async throws {
+    MockURLProtocol.reset()
     MockURLProtocol.responseData = Data([
       #"data: {"choices":[{"delta":"#,
       #"data: {"content":"hello"},"finish_reason":null}]}"#,
@@ -25,6 +26,29 @@ final class ChatSessionServiceTests: XCTestCase {
     let events = await accumulator.events
     XCTAssertEqual(events, [.delta("hello"), .completed])
   }
+
+  func testTavilyModeDoesNotPreflightWhenModelAnswersWithoutToolCall() async throws {
+    MockURLProtocol.reset()
+    MockURLProtocol.responseData = Data([
+      #"data: {"choices":[{"delta":{"content":"hello"},"finish_reason":null}]}"#,
+      "",
+      "data: [DONE]",
+      "",
+    ].joined(separator: "\n").utf8)
+
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.protocolClasses = [MockURLProtocol.self]
+    let service = ChatSessionService(session: URLSession(configuration: configuration))
+    let accumulator = EventAccumulator()
+
+    try await service.run(testRequest(webSearchMode: .tavily)) { event in
+      await accumulator.append(event)
+    }
+
+    let events = await accumulator.events
+    XCTAssertEqual(events, [.delta("hello"), .completed])
+    XCTAssertEqual(MockURLProtocol.requestBodies.count, 1)
+  }
 }
 
 private actor EventAccumulator {
@@ -37,6 +61,12 @@ private actor EventAccumulator {
 
 private final class MockURLProtocol: URLProtocol {
   nonisolated(unsafe) static var responseData = Data()
+  nonisolated(unsafe) static var requestBodies: [Data] = []
+
+  nonisolated static func reset() {
+    responseData = Data()
+    requestBodies = []
+  }
 
   override class func canInit(with request: URLRequest) -> Bool {
     true
@@ -47,6 +77,7 @@ private final class MockURLProtocol: URLProtocol {
   }
 
   override func startLoading() {
+    Self.requestBodies.append(request.httpBody ?? Data())
     client?.urlProtocol(
       self,
       didReceive: HTTPURLResponse(
@@ -64,7 +95,7 @@ private final class MockURLProtocol: URLProtocol {
   override func stopLoading() {}
 }
 
-private func testRequest() -> ChatRequest {
+private func testRequest(webSearchMode: WebSearchMode = .disabled) -> ChatRequest {
   let provider = ModelProvider(
     id: UUID(),
     providerType: .openAI,
@@ -104,7 +135,7 @@ private func testRequest() -> ChatRequest {
     provider: provider,
     assistant: assistant,
     messages: [message],
-    webSearchMode: .disabled,
+    webSearchMode: webSearchMode,
     searchResults: []
   )
 }

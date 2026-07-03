@@ -73,13 +73,15 @@ struct OpenAIChatCompletionsAdapter: ChatModelAdapter {
     }
 
     if let delta = choice["delta"] as? [String: Any] {
-      if let content = textValue(delta["content"]), !content.isEmpty {
+      if let content = streamTextValue(delta["content"]) {
         return .delta(content)
       }
-      if let reasoning = textValue(delta["reasoning_content"]), !reasoning.isEmpty {
+      if let reasoning = streamTextValue(delta["reasoning_content"])
+        ?? streamTextValue(delta["reasoning"])
+      {
         return .reasoningDelta(reasoning)
       }
-      if let text = textValue(delta["text"]), !text.isEmpty {
+      if let text = streamTextValue(delta["text"]) {
         return .delta(text)
       }
     }
@@ -589,4 +591,9 @@ private func textValue(_ value: Any?) -> String? {
     return trimmed.isEmpty ? nil : value
   }
   return nil
+}
+
+private func streamTextValue(_ value: Any?) -> String? {
+  guard let value = value as? String, !value.isEmpty else { return nil }
+  return value
 }
