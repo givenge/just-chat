@@ -48,4 +48,59 @@ final class MarkdownViewTests: XCTestCase {
 
         XCTAssertEqual(normalized, sample)
     }
+
+    func testBlockquoteFollowedByCodeFenceParsesAsSeparateTopLevelBlocks() throws {
+        let sample = """
+        > 看！你今天的工作产出：**一个HTML日报页面**，直接放进日报里 ✅
+
+        ```html
+        <!DOCTYPE html>
+        ```
+        """
+
+        let document = Document(parsing: sample)
+        let children = Array(document.children)
+
+        XCTAssertEqual(children.count, 2)
+        XCTAssertTrue(children[0] is BlockQuote)
+        XCTAssertTrue(children[1] is CodeBlock)
+    }
+
+    func testHTMLArtifactDetectionRecognizesExplicitHTMLLanguage() {
+        XCTAssertTrue(HTMLArtifactSupport.isHTMLArtifact(language: "html", code: "plain text"))
+        XCTAssertFalse(HTMLArtifactSupport.isHTMLArtifact(language: "swift", code: "<html></html>"))
+    }
+
+    func testHTMLArtifactDetectionFallsBackToDoctypeWhenLanguageIsMissing() {
+        let html = """
+        <!DOCTYPE html>
+        <html lang="zh-CN"></html>
+        """
+
+        XCTAssertTrue(HTMLArtifactSupport.isHTMLArtifact(language: nil, code: html))
+    }
+
+    func testHTMLArtifactExtractsTitleForPreviewAndFilename() {
+        let html = """
+        <!DOCTYPE html>
+        <html>
+        <head><title>工作日报 / Demo</title></head>
+        <body></body>
+        </html>
+        """
+
+        XCTAssertEqual(HTMLArtifactSupport.extractTitle(from: html), "工作日报 / Demo")
+        XCTAssertEqual(HTMLArtifactSupport.suggestedFilename(for: html), "工作日报-Demo.html")
+    }
+
+    func testHTMLArtifactInjectsBaseTagOnce() {
+        let html = "<html><head><title>Demo</title></head><body>Hello</body></html>"
+        let injected = HTMLArtifactSupport.injectPreviewBase(into: html)
+
+        XCTAssertTrue(injected.contains(#"<base href="about:blank">"#))
+        XCTAssertEqual(
+            injected.components(separatedBy: #"<base href="about:blank">"#).count,
+            2
+        )
+    }
 }

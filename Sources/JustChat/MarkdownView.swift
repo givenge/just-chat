@@ -77,13 +77,7 @@ struct MarkdownText: View {
         case let c as CodeBlock:
             CodeBlockView(language: c.language, code: c.code)
         case let q as BlockQuote:
-            HStack(alignment: .top, spacing: 10) {
-                Rectangle()
-                    .fill(Color.justAccent.opacity(0.5))
-                    .frame(width: 3)
-                blocksView(q.children)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
+            blockQuoteView(q)
         case let ul as UnorderedList:
             listChildrenView(ul, ordered: false, start: 1)
         case let ol as OrderedList:
@@ -97,6 +91,36 @@ struct MarkdownText: View {
                 .font(.system(size: fontSize))
                 .textSelection(.enabled)
         }
+    }
+
+    @ViewBuilder
+    private func blockQuoteView(_ quote: BlockQuote) -> some View {
+        if let compactText = compactBlockQuoteText(quote) {
+            blockQuoteContainer {
+                SwiftUI.Text(compactText)
+                    .font(.system(size: fontSize))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        } else {
+            blockQuoteContainer {
+                blocksView(quote.children)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func blockQuoteContainer<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Rectangle()
+                .fill(Color.justAccent.opacity(0.5))
+                .frame(width: 3)
+            content()
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
@@ -178,6 +202,14 @@ struct MarkdownText: View {
         return SwiftUI.Text(inlineAttributedString(cell.children))
     }
 
+    private func compactBlockQuoteText(_ quote: BlockQuote) -> AttributedString? {
+        let children = Array(quote.children)
+        let paragraphs = children.compactMap { $0 as? Paragraph }
+        guard !paragraphs.isEmpty, paragraphs.count == children.count else { return nil }
+        let mergedMarkdown = paragraphs.map { $0.format() }.joined(separator: "\n\n")
+        return attributedMarkdownString(mergedMarkdown)
+    }
+
     private func attributedMarkdownString(_ markdown: String) -> AttributedString {
         let trimmed = markdown.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty { return AttributedString() }
@@ -204,6 +236,14 @@ struct CodeBlockView: View {
     @State private var copied = false
 
     var body: some View {
+        if HTMLArtifactSupport.isHTMLArtifact(language: language, code: code) {
+            HTMLArtifactCard(html: code)
+        } else {
+            sourceCodeBlock
+        }
+    }
+
+    private var sourceCodeBlock: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text(languageLabel)

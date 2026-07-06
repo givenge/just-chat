@@ -23,6 +23,7 @@ let package = Package(
                 .linkedFramework("AppKit"),
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("Carbon"),
+                .linkedFramework("WebKit"),
                 .linkedLibrary("sqlite3")
             ]
         ),
