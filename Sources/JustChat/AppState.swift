@@ -724,11 +724,19 @@ final class AppState: ObservableObject {
     modelId: String,
     reasoningEffort: ReasoningEffort
   ) -> AssistantProfile {
-    var assistant = selectedAssistant
-    assistant.providerId = providerId
-    assistant.modelId = modelId
-    assistant.reasoningEffort = reasoningEffort
-    return assistant
+    AssistantProfile(
+      id: UUID(),
+      name: "快捷助手",
+      systemPrompt: "你是桌面快捷助手。只执行用户消息中给出的任务指令，不继承主面板助手的角色、语言偏好或输出格式。",
+      providerId: providerId,
+      modelId: modelId,
+      temperature: 0.4,
+      maxTokens: 4096,
+      isWebSearchEnabled: false,
+      reasoningEffort: reasoningEffort,
+      quickTemplates: [],
+      contextMessageCount: 0
+    )
   }
 
   private func provider(for assistant: AssistantProfile) -> ModelProvider {
