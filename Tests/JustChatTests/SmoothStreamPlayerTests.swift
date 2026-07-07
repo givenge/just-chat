@@ -15,25 +15,39 @@ final class SmoothStreamPlayerTests: XCTestCase {
         XCTAssertTrue(fullText.hasPrefix(player.displayedText))
     }
 
-    func testFinishingStreamCatchesUpWithoutImmediateJump() {
+    func testLargeStreamingBurstCatchesUpAtHighTokenRate() {
+        let player = SmoothStreamPlayer(initialText: "", automaticallyStartsPlayback: false)
+        let fullText = String(repeating: "token ", count: 1_000)
+
+        player.update(accumulatedText: fullText, isStreaming: true)
+
+        var frameCount = 0
+        while player.displayedText != fullText && frameCount < 12 {
+            player.advanceOneFrame()
+            frameCount += 1
+        }
+
+        XCTAssertEqual(player.displayedText, fullText)
+        XCTAssertLessThanOrEqual(frameCount, 12)
+    }
+
+    func testLargeStreamingBurstCapsLiveBacklog() {
+        let player = SmoothStreamPlayer(initialText: "", automaticallyStartsPlayback: false)
+        let fullText = String(repeating: "a", count: 1_000)
+
+        player.update(accumulatedText: fullText, isStreaming: true)
+        player.advanceOneFrame()
+
+        XCTAssertGreaterThanOrEqual(player.displayedText.count, 600)
+    }
+
+    func testFinishingStreamShowsFullTextImmediately() {
         let player = SmoothStreamPlayer(initialText: "", automaticallyStartsPlayback: false)
         let fullText = String(repeating: "这是平滑吐字。", count: 12)
 
         player.update(accumulatedText: fullText, isStreaming: true)
         player.update(accumulatedText: fullText, isStreaming: false)
 
-        let firstFrameCount = player.advanceOneFrame()
-        XCTAssertGreaterThan(firstFrameCount, 0)
-        XCTAssertLessThanOrEqual(firstFrameCount, 8)
-        XCTAssertLessThan(player.displayedText.count, fullText.count)
-
-        var frameCount = 1
-        while player.displayedText != fullText && frameCount < 80 {
-            player.advanceOneFrame()
-            frameCount += 1
-        }
-
         XCTAssertEqual(player.displayedText, fullText)
-        XCTAssertLessThan(frameCount, 80)
     }
 }

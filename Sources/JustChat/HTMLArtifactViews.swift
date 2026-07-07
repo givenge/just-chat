@@ -388,8 +388,9 @@ private struct HTMLArtifactPreviewSheet: View {
     }
 }
 
-private struct HTMLPreviewWebView: NSViewRepresentable {
+struct HTMLPreviewWebView: NSViewRepresentable {
     let html: String
+    var measuredHeight: Binding<CGFloat>? = nil
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -398,6 +399,7 @@ private struct HTMLPreviewWebView: NSViewRepresentable {
     func makeNSView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
+        configuration.userContentController.add(context.coordinator, name: "height")
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.setValue(false, forKey: "drawsBackground")
@@ -405,6 +407,7 @@ private struct HTMLPreviewWebView: NSViewRepresentable {
     }
 
     func updateNSView(_ webView: WKWebView, context: Context) {
+        context.coordinator.measuredHeight = measuredHeight
         guard context.coordinator.lastHTML != html else { return }
         context.coordinator.lastHTML = html
         webView.loadHTMLString(
@@ -413,7 +416,31 @@ private struct HTMLPreviewWebView: NSViewRepresentable {
         )
     }
 
-    final class Coordinator {
+    final class Coordinator: NSObject, WKScriptMessageHandler {
         var lastHTML = ""
+        var measuredHeight: Binding<CGFloat>?
+
+        func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+            guard message.name == "height" else { return }
+
+            let height: CGFloat?
+            if let value = message.body as? Double {
+                height = CGFloat(value)
+            } else if let value = message.body as? Int {
+                height = CGFloat(value)
+            } else {
+                height = nil
+            }
+
+            guard let height else { return }
+
+            DispatchQueue.main.async { [weak self] in
+                let clampedHeight = min(max(height, 180), 1200)
+                guard let measuredHeight = self?.measuredHeight,
+                      abs(measuredHeight.wrappedValue - clampedHeight) > 1
+                else { return }
+                measuredHeight.wrappedValue = clampedHeight
+            }
+        }
     }
 }

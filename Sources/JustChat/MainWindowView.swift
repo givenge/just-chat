@@ -98,50 +98,6 @@ private struct HomeWorkspace: View {
   }
 }
 
-private struct SidebarResizeHandle: View {
-  @Binding var width: Double
-  var onEnded: () -> Void
-  @State private var startWidth: Double?
-  @State private var isHovering = false
-
-  var body: some View {
-    Rectangle()
-      .fill(Color.justBorderSoft.opacity(0.65))
-      .frame(width: 1)
-      .frame(width: 8)
-      .contentShape(Rectangle())
-      .gesture(
-        DragGesture(minimumDistance: 0)
-          .onChanged { value in
-            if startWidth == nil {
-              startWidth = width
-            }
-            let base = startWidth ?? width
-            width = min(max(base + value.translation.width, 240), 460)
-          }
-          .onEnded { _ in
-            startWidth = nil
-            onEnded()
-          }
-      )
-      .onHover { hovering in
-        if hovering, !isHovering {
-          NSCursor.resizeLeftRight.push()
-          isHovering = true
-        } else if !hovering, isHovering {
-          NSCursor.pop()
-          isHovering = false
-        }
-      }
-      .onDisappear {
-        if isHovering {
-          NSCursor.pop()
-          isHovering = false
-        }
-      }
-  }
-}
-
 private struct HomeSidebar: View {
   @EnvironmentObject private var appState: AppState
 
@@ -988,6 +944,10 @@ private struct MessageBubble: View {
             )
           }
 
+          if !message.citations.isEmpty {
+            SearchResultsBlock(citations: message.citations)
+          }
+
           if message.content.isEmpty && message.reasoningContent.isEmpty && message.status == .streaming {
             TypingIndicator()
           } else {
@@ -996,15 +956,6 @@ private struct MessageBubble: View {
               isStreaming: isDisplayStreaming,
               fontSize: fontSize
             )
-          }
-
-          if !message.citations.isEmpty {
-            FlexWrap(spacing: 6) {
-              ForEach(message.citations) { citation in
-                CitationChip(citation: citation)
-              }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
           }
 
           AssistantMessageFooter(message: message)
@@ -1182,6 +1133,114 @@ private struct MetricBadge: View {
       }
       .onHover { isHovering = $0 }
       .animation(.easeOut(duration: 0.14), value: isHovering)
+  }
+}
+
+private struct SearchResultsBlock: View {
+  var citations: [Citation]
+  @State private var isExpanded = true
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 0) {
+      Button {
+        withAnimation(.easeOut(duration: 0.16)) {
+          isExpanded.toggle()
+        }
+      } label: {
+        HStack(spacing: 8) {
+          Image(systemName: "magnifyingglass")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(Color.justMeta)
+          Text("网络搜索")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.primary)
+          Text("\(citations.count) 个搜索结果")
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(.secondary)
+          Spacer(minLength: 8)
+          Image(systemName: "chevron.right")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(Color.justMeta)
+            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 36)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(.plain)
+
+      if isExpanded {
+        Divider()
+        VStack(alignment: .leading, spacing: 0) {
+          ForEach(citations.indices, id: \.self) { index in
+            SearchResultRow(index: index + 1, citation: citations[index])
+            if index < citations.count - 1 {
+              Divider()
+                .padding(.leading, 40)
+            }
+          }
+        }
+      }
+    }
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(
+      RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+        .fill(Color.justControlBackground.opacity(0.58))
+    )
+    .overlay(
+      RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+        .stroke(Color.justBorderSoft, lineWidth: 1)
+    )
+  }
+}
+
+private struct SearchResultRow: View {
+  var index: Int
+  var citation: Citation
+
+  private var domain: String {
+    citation.url.host ?? citation.url.absoluteString
+  }
+
+  var body: some View {
+    Link(destination: citation.url) {
+      HStack(alignment: .top, spacing: 10) {
+        Text("\(index)")
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(.secondary)
+          .frame(width: 20, height: 20)
+          .background(Circle().fill(Color.justWindowBackground.opacity(0.8)))
+
+        VStack(alignment: .leading, spacing: 3) {
+          Text(citation.title)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+
+          if !citation.snippet.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            Text(citation.snippet)
+              .font(.system(size: 12))
+              .foregroundStyle(.secondary)
+              .lineLimit(2)
+          }
+
+          Text(domain)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Color.justAccent)
+            .lineLimit(1)
+        }
+
+        Spacer(minLength: 8)
+        Image(systemName: "arrow.up.right")
+          .font(.system(size: 10, weight: .bold))
+          .foregroundStyle(Color.justMeta)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 9)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .help(citation.url.absoluteString)
   }
 }
 
@@ -1573,7 +1632,8 @@ private struct ComposerView: View {
     }
     .padding(.top, 10)
     .background(Color.justWindowBackground)
-    .onPasteCommand(of: [.image, .png, .jpeg, .gif, .webP]) { providers in
+    .onPasteCommand(of: [.image, .png, .jpeg, .gif, .webP, .tiff, .fileURL, .url]) {
+      providers in
       pasteImages(from: providers)
     }
     .onAppear {
@@ -1604,7 +1664,7 @@ private struct ComposerView: View {
 
   private func pickAttachments() {
     let panel = NSOpenPanel()
-    panel.allowedContentTypes = [.png, .jpeg, .gif, .webP]
+    panel.allowedContentTypes = [.png, .jpeg, .gif, .webP, .tiff]
     panel.allowsMultipleSelection = true
     panel.canChooseDirectories = false
     panel.begin { response in
@@ -1616,6 +1676,7 @@ private struct ComposerView: View {
           case "png": return "image/png"
           case "gif": return "image/gif"
           case "webp": return "image/webp"
+          case "tiff", "tif": return "image/tiff"
           default: return "image/jpeg"
           }
         }()
@@ -1637,6 +1698,26 @@ private struct ComposerView: View {
             appState.composerAttachments.append(
               MessageImage(id: UUID(), data: data, mimeType: match.1)
             )
+          }
+        }
+      } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+        provider.loadDataRepresentation(forTypeIdentifier: UTType.fileURL.identifier) { data, _ in
+          guard let data,
+            let text = String(data: data, encoding: .utf8),
+            let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+            let image = MessageImage.fromFileURL(url)
+          else { return }
+          DispatchQueue.main.async {
+            appState.composerAttachments.append(image)
+          }
+        }
+      } else if provider.canLoadObject(ofClass: NSURL.self) {
+        provider.loadObject(ofClass: NSURL.self) { object, _ in
+          guard let url = object as? URL,
+            let image = MessageImage.fromFileURL(url)
+          else { return }
+          DispatchQueue.main.async {
+            appState.composerAttachments.append(image)
           }
         }
       } else if provider.canLoadObject(ofClass: NSImage.self) {
@@ -1767,6 +1848,20 @@ private final class ComposerNSTextView: NSTextView {
   var onSubmit: () -> Void = {}
   var onPasteImages: ([MessageImage]) -> Void = { _ in }
 
+  override func performKeyEquivalent(with event: NSEvent) -> Bool {
+    let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+    if flags.contains(.command),
+      event.charactersIgnoringModifiers?.lowercased() == "v"
+    {
+      let images = pastedImages(from: .general)
+      if !images.isEmpty {
+        onPasteImages(images)
+        return true
+      }
+    }
+    return super.performKeyEquivalent(with: event)
+  }
+
   override func keyDown(with event: NSEvent) {
     let isReturn = event.keyCode == 36 || event.keyCode == 76
     let wantsNewline = event.modifierFlags.intersection(.deviceIndependentFlagsMask).contains(
@@ -1785,6 +1880,15 @@ private final class ComposerNSTextView: NSTextView {
       return
     }
     super.paste(sender)
+  }
+
+  override func readSelection(from pasteboard: NSPasteboard) -> Bool {
+    let images = pastedImages(from: pasteboard)
+    if !images.isEmpty {
+      onPasteImages(images)
+      return true
+    }
+    return super.readSelection(from: pasteboard)
   }
 
   private func pastedImages(from pasteboard: NSPasteboard) -> [MessageImage] {
@@ -1816,7 +1920,12 @@ private final class ComposerNSTextView: NSTextView {
       if appended { continue }
       if let file = item.string(forType: .fileURL),
         let url = URL(string: file),
-        let image = imageFromFileURL(url)
+        let image = MessageImage.fromFileURL(url)
+      {
+        images.append(image)
+      } else if let file = item.string(forType: .URL),
+        let url = URL(string: file),
+        let image = MessageImage.fromFileURL(url)
       {
         images.append(image)
       }
@@ -1841,7 +1950,15 @@ private final class ComposerNSTextView: NSTextView {
     if images.isEmpty,
       let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: nil) as? [URL]
     {
-      images.append(contentsOf: urls.compactMap(imageFromFileURL))
+      images.append(contentsOf: urls.compactMap(MessageImage.fromFileURL))
+    }
+
+    if images.isEmpty,
+      let files = pasteboard.propertyList(forType: NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        as? [String]
+    {
+      images.append(
+        contentsOf: files.compactMap { MessageImage.fromFileURL(URL(fileURLWithPath: $0)) })
     }
 
     if images.isEmpty,
@@ -1853,7 +1970,10 @@ private final class ComposerNSTextView: NSTextView {
     return images
   }
 
-  private func imageFromFileURL(_ url: URL) -> MessageImage? {
+}
+
+private extension MessageImage {
+  static func fromFileURL(_ url: URL) -> MessageImage? {
     guard let data = try? Data(contentsOf: url), !data.isEmpty else { return nil }
     let ext = url.pathExtension.lowercased()
     let mimeType: String
@@ -1920,8 +2040,6 @@ struct AssistantEditor: View {
                 Text(model).tag(model)
               }
             }
-            Toggle("启用网络搜索", isOn: assistantBinding(\.isWebSearchEnabled))
-              .tint(Color.justAccent)
           }
         }
 

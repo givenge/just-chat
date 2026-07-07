@@ -1,8 +1,39 @@
+import AppKit
 import XCTest
 
 @testable import JustChat
 
 final class AdapterTests: XCTestCase {
+  func testTiffAttachmentsAreSentAsPngDataUrls() throws {
+    var message = testMessage()
+    message.attachments = [
+      MessageImage(id: UUID(), data: try testTiffData(), mimeType: "image/tiff")
+    ]
+
+    let request = try OpenAIChatCompletionsAdapter().makeRequest(
+      ChatRequest(
+        provider: testProvider(kind: .openAIChatCompletions),
+        assistant: testAssistant(),
+        messages: [message],
+        webSearchMode: .disabled,
+        searchResults: [],
+        stream: false
+      ),
+      apiKey: "secret"
+    )
+
+    let json = try requestJSON(request)
+    let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
+    let content = try XCTUnwrap(messages.dropFirst().first?["content"] as? [[String: Any]])
+    let imageURL = try XCTUnwrap(content.last?["image_url"] as? [String: Any])
+    let url = try XCTUnwrap(imageURL["url"] as? String)
+
+    XCTAssertTrue(url.hasPrefix("data:image/png;base64,"))
+    let encoded = String(url.dropFirst("data:image/png;base64,".count))
+    let png = try XCTUnwrap(Data(base64Encoded: encoded))
+    XCTAssertEqual(Array(png.prefix(8)), [137, 80, 78, 71, 13, 10, 26, 10])
+  }
+
   func testOpenAIChatCompletionsUsesWebSearchToolWhenTavilyEnabled() throws {
     let provider = ModelProvider(
       id: UUID(),
@@ -559,6 +590,15 @@ private func testMessage() -> ChatMessage {
     createdAt: Date(),
     updatedAt: Date()
   )
+}
+
+private func testTiffData() throws -> Data {
+  let image = NSImage(size: NSSize(width: 2, height: 2))
+  image.lockFocus()
+  NSColor.red.setFill()
+  NSRect(x: 0, y: 0, width: 2, height: 2).fill()
+  image.unlockFocus()
+  return try XCTUnwrap(image.tiffRepresentation)
 }
 
 private func requestJSON(_ request: URLRequest) throws -> [String: Any] {

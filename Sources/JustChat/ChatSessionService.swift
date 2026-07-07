@@ -27,6 +27,9 @@ struct ChatSessionService: Sendable {
         }
 
         var executableRequest = request
+        if executableRequest.webSearchMode == .providerNative {
+            executableRequest = withCurrentTimeContext(executableRequest, now: Date())
+        }
         if request.webSearchMode == .tavily {
             executableRequest.webSearchMode = .disabled
         }
@@ -38,7 +41,8 @@ struct ChatSessionService: Sendable {
         _ request: ChatRequest,
         onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
     ) async throws {
-        var toolRequest = request
+        let now = Date()
+        var toolRequest = withCurrentTimeContext(request, now: now)
         toolRequest.searchResults = []
 
         let apiKey = try readAPIKey(for: toolRequest.provider)
@@ -46,8 +50,7 @@ struct ChatSessionService: Sendable {
         let toolURLRequest = try adapter.makeRequest(toolRequest, apiKey: apiKey)
         let toolCalls = try await runOpenAITavilyToolStream(
             toolURLRequest,
-            adapter: adapter,
-            onEvent: onEvent
+            adapter: adapter
         )
 
         let queries = toolCalls.compactMap(\.query).filter { !$0.isEmpty }
@@ -70,13 +73,13 @@ struct ChatSessionService: Sendable {
         finalRequest.webSearchMode = .disabled
         finalRequest.searchResults = results
         finalRequest = injectSearchContextIfNeeded(finalRequest)
+        finalRequest = withCurrentTimeContext(finalRequest, now: now)
         try await runStreamingRequest(finalRequest, onEvent: onEvent)
     }
 
     private func runOpenAITavilyToolStream(
         _ urlRequest: URLRequest,
-        adapter: ChatModelAdapter,
-        onEvent: @escaping @Sendable (ChatStreamEvent) async -> Void
+        adapter: ChatModelAdapter
     ) async throws -> [OpenAIToolCall] {
         let (bytes, response) = try await session.bytes(for: urlRequest)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -102,10 +105,7 @@ struct ChatSessionService: Sendable {
             guard let chatEvent = adapter.parseEvent(event) else {
                 return false
             }
-            if case .completed = chatEvent {
-                return true
-            }
-            await onEvent(chatEvent)
+            if case .completed = chatEvent { return true }
             return false
         }
 
@@ -391,6 +391,38 @@ struct ChatSessionService: Sendable {
         )
         request.messages.insert(searchContextMessage, at: 0)
         return request
+    }
+
+    private func withCurrentTimeContext(_ request: ChatRequest, now: Date) -> ChatRequest {
+        var request = request
+        let timeMessage = ChatMessage(
+            id: UUID(),
+            conversationId: request.messages.last?.conversationId ?? UUID(),
+            role: .system,
+            content: currentTimeContext(now: now),
+            reasoningContent: "",
+            citations: [],
+            attachments: [],
+            status: .success,
+            usage: nil,
+            createdAt: now,
+            updatedAt: now
+        )
+        request.messages.insert(timeMessage, at: 0)
+        return request
+    }
+
+    private func currentTimeContext(now: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss ZZZZ"
+        let timeZone = TimeZone.current.identifier
+        return """
+        Current date and time: \(formatter.string(from: now)).
+        Time zone: \(timeZone).
+        Use this as "today" and "now" when deciding whether to search, writing web search queries, and judging freshness of search results.
+        """
     }
 
     private func webSearchQueries(from data: Data) -> [String] {

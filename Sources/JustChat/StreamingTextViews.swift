@@ -12,7 +12,8 @@ final class SmoothStreamPlayer: ObservableObject {
     private var pauseFramesRemaining = 0
     private let frameIntervalMilliseconds: Int
     private let automaticallyStartsPlayback: Bool
-    private let postStreamDrainMilliseconds = 800
+    private let liveMinimumChunkSize = 96
+    private let liveMaximumBacklog = 400
 
     init(
         initialText: String,
@@ -40,7 +41,8 @@ final class SmoothStreamPlayer: ObservableObject {
             reset(to: accumulatedText, isStreaming: isStreaming)
         }
 
-        if streamDone && pendingText.isEmpty {
+        if streamDone {
+            pendingText.removeAll(keepingCapacity: true)
             displayedText = accumulatedText
             stopPlayback()
             return
@@ -116,34 +118,16 @@ final class SmoothStreamPlayer: ObservableObject {
     }
 
     private func shouldPauseFrame() -> Bool {
-        pauseFramesRemaining > 0 && !streamDone && pendingText.count < 80
+        pauseFramesRemaining > 0 && streamDone
     }
 
     private func nextChunkSize() -> Int {
         let pendingCount = pendingText.count
         guard pendingCount > 0 else { return 0 }
 
-        if streamDone {
-            let framesToDrain = max(1, postStreamDrainMilliseconds / frameIntervalMilliseconds)
-            return max(5, Int(ceil(Double(pendingCount) / Double(framesToDrain))))
-        }
-
-        switch pendingCount {
-        case 1...16:
-            return 1
-        case 17...48:
-            return 2
-        case 49...120:
-            return 4
-        case 121...240:
-            return 8
-        case 241...500:
-            return 12
-        case 501...900:
-            return 18
-        default:
-            return min(48, max(24, pendingCount / 30))
-        }
+        let catchupCount = max(liveMinimumChunkSize, pendingCount / 3)
+        let backlogCapCount = max(0, pendingCount - liveMaximumBacklog)
+        return min(pendingCount, max(catchupCount, backlogCapCount))
     }
 
     private func pauseFrames(after chunk: String) -> Int {
@@ -186,7 +170,17 @@ struct SmoothStreamingMarkdownView: View {
     }
 
     var body: some View {
-        MarkdownText(content: player.displayedText, fontSize: fontSize)
+        Group {
+            if isStreaming {
+                Text(player.displayedText)
+                    .font(.system(size: fontSize))
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                MarkdownText(content: player.displayedText, fontSize: fontSize)
+            }
+        }
             .onAppear {
                 player.update(accumulatedText: content, isStreaming: isStreaming)
             }

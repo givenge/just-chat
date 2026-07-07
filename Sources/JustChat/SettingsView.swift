@@ -1,3 +1,5 @@
+import AppKit
+import Carbon
 import SwiftUI
 
 struct SettingsView: View {
@@ -6,9 +8,11 @@ struct SettingsView: View {
     var body: some View {
         HStack(spacing: 0) {
             SettingsNavigation()
-                .frame(width: 280)
+                .frame(width: appState.preferences.homeSidebarWidth)
 
-            Divider()
+            SidebarResizeHandle(width: $appState.preferences.homeSidebarWidth) {
+                appState.persistConfiguration()
+            }
 
             if appState.selectedSettingsPane == .providers {
                 ProviderListColumn()
@@ -1297,36 +1301,254 @@ private struct HotKeySettingsPane: View {
             SettingsCard {
                 VStack(alignment: .leading, spacing: 14) {
                     settingTitle("全局快捷键", icon: "command")
-                    ShortcutTextField(title: "快捷助手", text: $appState.preferences.quickAssistantHotKey)
-                    ShortcutTextField(title: "划词助手", text: $appState.preferences.selectionAssistantHotKey)
-                    Text("格式示例：Command+Shift+Space、Option+Space、Control+Shift+E。")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    ShortcutRecorderRow(
+                        title: "快捷助手",
+                        text: $appState.preferences.quickAssistantHotKey,
+                        defaultText: AppPreferences.default.quickAssistantHotKey,
+                        conflictingText: appState.preferences.selectionAssistantHotKey,
+                        conflictingTitle: "划词助手",
+                        registrationStatus: appState.hotKeyRegistrationResults.quick,
+                        onChange: appState.persistConfiguration
+                    )
+                    ShortcutRecorderRow(
+                        title: "划词助手",
+                        text: $appState.preferences.selectionAssistantHotKey,
+                        defaultText: AppPreferences.default.selectionAssistantHotKey,
+                        conflictingText: appState.preferences.quickAssistantHotKey,
+                        conflictingTitle: "快捷助手",
+                        registrationStatus: appState.hotKeyRegistrationResults.selection,
+                        onChange: appState.persistConfiguration
+                    )
                 }
             }
-
-            Button("保存快捷键设置") {
-                appState.persistConfiguration()
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(Color.justAccent)
-            .focusable(false)
         }
         .padding(28)
         .frame(maxWidth: 760, alignment: .leading)
     }
 }
 
-private struct ShortcutTextField: View {
+private struct ShortcutRecorderRow: View {
     var title: String
     @Binding var text: String
+    var defaultText: String
+    var conflictingText: String
+    var conflictingTitle: String
+    var registrationStatus: HotKeyRegistrationStatus
+    var onChange: () -> Void
+
+    @State private var isRecording = false
+    @State private var focusToken = UUID()
+    @State private var localError: String?
 
     var body: some View {
         LabeledContent(title) {
-            TextField("Command+Shift+Space", text: $text)
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 260)
+            VStack(alignment: .trailing, spacing: 5) {
+                HStack(spacing: 8) {
+                    if text != defaultText {
+                        iconButton("arrow.counterclockwise", help: "恢复默认") {
+                            commit(defaultText)
+                        }
+                    }
+
+                    Button {
+                        beginRecording()
+                    } label: {
+                        ShortcutRecorderLabel(
+                            shortcut: HotKeyShortcut(text: text),
+                            isRecording: isRecording
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .focusable(false)
+                    .background {
+                        if isRecording {
+                            ShortcutCaptureView(
+                                focusToken: focusToken,
+                                onKeyDown: handleKeyDown,
+                                onBlur: { isRecording = false }
+                            )
+                            .frame(width: 1, height: 1)
+                            .opacity(0)
+                        }
+                    }
+
+                    if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        iconButton("xmark.circle", help: "清空快捷键") {
+                            clear()
+                        }
+                    }
+                }
+
+                if let message {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(Color.justDanger)
+                }
+            }
         }
+    }
+
+    private var message: String? {
+        if let localError {
+            return localError
+        }
+        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        if HotKeyShortcut.conflicts(text, conflictingText) {
+            return "\(conflictingTitle) 已使用这个快捷键。"
+        }
+        switch registrationStatus {
+        case .occupied:
+            return "已被系统或其他应用占用。"
+        case .invalid:
+            return "快捷键格式无效。"
+        case .empty, .registered:
+            return nil
+        }
+    }
+
+    private func beginRecording() {
+        localError = nil
+        isRecording = true
+        focusToken = UUID()
+    }
+
+    private func clear() {
+        text = ""
+        localError = nil
+        isRecording = false
+        onChange()
+    }
+
+    private func handleKeyDown(_ event: NSEvent) {
+        if event.keyCode == UInt16(kVK_Escape) {
+            isRecording = false
+            localError = nil
+            return
+        }
+
+        switch HotKeyShortcut.capture(from: event) {
+        case .success(let shortcut):
+            commit(shortcut.stringValue)
+        case .failure(let error):
+            localError = error.message
+        }
+    }
+
+    private func commit(_ value: String) {
+        guard let shortcut = HotKeyShortcut(text: value) else {
+            localError = "快捷键格式无效。"
+            return
+        }
+        if HotKeyShortcut.conflicts(shortcut.stringValue, conflictingText) {
+            localError = "\(conflictingTitle) 已使用这个快捷键。"
+            return
+        }
+        text = shortcut.stringValue
+        localError = nil
+        isRecording = false
+        onChange()
+    }
+
+    private func iconButton(_ systemName: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .hoverSurface(radius: Radius.sm, opacity: 0.5)
+        .help(help)
+    }
+}
+
+private struct ShortcutRecorderLabel: View {
+    var shortcut: HotKeyShortcut?
+    var isRecording: Bool
+
+    var body: some View {
+        HStack(spacing: 5) {
+            if isRecording {
+                Text("按下快捷键")
+                    .foregroundStyle(.secondary)
+            } else if let shortcut {
+                ForEach(Array(shortcut.displayParts.enumerated()), id: \.offset) { _, part in
+                    Text(part)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(minWidth: 20)
+                        .padding(.horizontal, 5)
+                        .frame(height: 24)
+                        .background(
+                            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                                .fill(Color.justControlBackground)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                                .stroke(Color.justBorderSoft, lineWidth: 1)
+                        )
+                }
+            } else {
+                Text("未设置")
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .font(.system(size: 13, weight: .semibold))
+        .frame(width: 220, height: 34)
+        .background(
+            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                .fill(isRecording ? Color.justAccent.opacity(0.08) : Color.justInputBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.sm, style: .continuous)
+                .stroke(isRecording ? Color.justAccent.opacity(0.55) : Color.justBorderSoft, lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+    }
+}
+
+private struct ShortcutCaptureView: NSViewRepresentable {
+    var focusToken: UUID
+    var onKeyDown: (NSEvent) -> Void
+    var onBlur: () -> Void
+
+    func makeNSView(context: Context) -> ShortcutCaptureNSView {
+        let view = ShortcutCaptureNSView()
+        view.onKeyDown = onKeyDown
+        view.onBlur = onBlur
+        return view
+    }
+
+    func updateNSView(_ nsView: ShortcutCaptureNSView, context: Context) {
+        nsView.onKeyDown = onKeyDown
+        nsView.onBlur = onBlur
+        if nsView.focusToken != focusToken {
+            nsView.focusToken = focusToken
+            DispatchQueue.main.async {
+                nsView.window?.makeFirstResponder(nsView)
+            }
+        }
+    }
+}
+
+private final class ShortcutCaptureNSView: NSView {
+    var focusToken: UUID?
+    var onKeyDown: (NSEvent) -> Void = { _ in }
+    var onBlur: () -> Void = {}
+
+    override var acceptsFirstResponder: Bool { true }
+
+    override func keyDown(with event: NSEvent) {
+        onKeyDown(event)
+    }
+
+    override func resignFirstResponder() -> Bool {
+        onBlur()
+        return super.resignFirstResponder()
     }
 }
 

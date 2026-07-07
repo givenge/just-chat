@@ -880,7 +880,7 @@ private struct QuickAssistantPanel: View {
                 markDisplayStreaming()
             }
             isRunning = false
-            scheduleDisplayStreamingEnd()
+            stopDisplayStreaming()
         }
     }
 
@@ -888,18 +888,6 @@ private struct QuickAssistantPanel: View {
         displayStreamingTask?.cancel()
         displayStreamingTask = nil
         isDisplayStreaming = true
-    }
-
-    private func scheduleDisplayStreamingEnd() {
-        guard isDisplayStreaming else { return }
-        displayStreamingTask?.cancel()
-        let milliseconds = min(12_000, max(1_200, (result.count + reasoning.count) * 2))
-        displayStreamingTask = Task {
-            try? await Task.sleep(for: .milliseconds(milliseconds))
-            await MainActor.run {
-                stopDisplayStreaming()
-            }
-        }
     }
 
     private func stopDisplayStreaming() {
@@ -1734,7 +1722,7 @@ private struct SelectionActionPanel: View {
                 markDisplayStreaming()
             }
             isRunning = false
-            scheduleDisplayStreamingEnd()
+            stopDisplayStreaming()
         }
     }
 
@@ -1742,18 +1730,6 @@ private struct SelectionActionPanel: View {
         displayStreamingTask?.cancel()
         displayStreamingTask = nil
         isDisplayStreaming = true
-    }
-
-    private func scheduleDisplayStreamingEnd() {
-        guard isDisplayStreaming else { return }
-        displayStreamingTask?.cancel()
-        let milliseconds = min(12_000, max(1_200, (result.count + reasoning.count) * 2))
-        displayStreamingTask = Task {
-            try? await Task.sleep(for: .milliseconds(milliseconds))
-            await MainActor.run {
-                stopDisplayStreaming()
-            }
-        }
     }
 
     private func stopDisplayStreaming() {

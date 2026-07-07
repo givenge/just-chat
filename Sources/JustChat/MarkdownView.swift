@@ -1,6 +1,8 @@
 import AppKit
+import Foundation
 import Markdown
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Renders a markdown string as native SwiftUI blocks using `apple/swift-markdown`
 /// for parsing. Supports headings, paragraphs (inline markdown), fenced/indented
@@ -75,7 +77,11 @@ struct MarkdownText: View {
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
         case let c as CodeBlock:
-            CodeBlockView(language: c.language, code: c.code)
+            if MermaidSupport.isMermaid(language: c.language) {
+                MermaidBlockView(code: c.code)
+            } else {
+                CodeBlockView(language: c.language, code: c.code)
+            }
         case let q as BlockQuote:
             blockQuoteView(q)
         case let ul as UnorderedList:
@@ -238,6 +244,8 @@ struct CodeBlockView: View {
     var body: some View {
         if HTMLArtifactSupport.isHTMLArtifact(language: language, code: code) {
             HTMLArtifactCard(html: code)
+        } else if SVGSupport.isSVG(language: language, code: code) {
+            SVGBlockView(code: code)
         } else {
             sourceCodeBlock
         }
@@ -286,6 +294,362 @@ struct CodeBlockView: View {
     private var languageLabel: String {
         let trimmed = language?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return trimmed.isEmpty ? "code" : trimmed
+    }
+}
+
+// MARK: - Mermaid diagrams
+
+enum MermaidSupport {
+    static func isMermaid(language: String?) -> Bool {
+        let normalized = language?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized == "mermaid" || normalized == "mmd"
+    }
+
+    static func html(for code: String) -> String {
+        let jsonCode = (try? String(
+            data: JSONEncoder().encode(code),
+            encoding: .utf8
+        ))?.replacingOccurrences(of: "</", with: "<\\/") ?? "\"\""
+
+        return """
+        <!doctype html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <style>
+        html, body { margin: 0; background: transparent; color: #1d1d1f; font: 14px -apple-system, BlinkMacSystemFont, sans-serif; }
+        body { padding: 16px; }
+        #diagram { min-width: max-content; }
+        .error { color: #dc2626; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        @media (prefers-color-scheme: dark) {
+          html, body { color: #f5f5f7; }
+          .error { color: #ff453a; }
+        }
+        </style>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+        </head>
+        <body>
+        <div id="diagram"></div>
+        <script>
+        const source = \(jsonCode);
+        const sendHeight = () => {
+          const height = Math.ceil(Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight,
+            document.getElementById("diagram").scrollHeight
+          ));
+          window.webkit?.messageHandlers?.height?.postMessage(height);
+        };
+        const showError = error => {
+          const node = document.getElementById("diagram");
+          node.className = "error";
+          node.textContent = error.message || String(error);
+          sendHeight();
+        };
+        if (!window.mermaid) {
+          showError("Mermaid 加载失败，请检查网络连接。");
+        } else {
+          const theme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "default";
+          mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme });
+          mermaid.render("mermaid-diagram", source)
+            .then(({ svg }) => {
+              document.getElementById("diagram").innerHTML = svg;
+              requestAnimationFrame(sendHeight);
+            })
+            .catch(showError);
+        }
+        window.addEventListener("load", () => setTimeout(sendHeight, 0));
+        </script>
+        </body>
+        </html>
+        """
+    }
+}
+
+struct MermaidBlockView: View {
+    let code: String
+
+    @State private var copied = false
+    @State private var diagramHeight: CGFloat = 360
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 6) {
+                Text("MERMAID")
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(code, forType: .string)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { copied = false }
+                } label: {
+                    Label(copied ? "已复制" : "复制", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .suppressFocusRing()
+                .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.justCodeBackground.opacity(0.6))
+
+            HTMLPreviewWebView(html: MermaidSupport.html(for: code), measuredHeight: $diagramHeight)
+                .allowsHitTesting(false)
+                .frame(height: diagramHeight)
+        }
+        .background(Color.justCodeBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                .stroke(Color.justBorderSoft, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+        .cardShadow()
+    }
+}
+
+// MARK: - SVG previews
+
+enum SVGSupport {
+    private static let svgPrefixPattern = #"^(?:<\?xml[\s\S]*?\?>\s*)?(?:<!--[\s\S]*?-->\s*)*<svg(?:\s|>|/)"#
+
+    static func isSVG(language: String?, code: String) -> Bool {
+        let normalized = language?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+        guard normalized.isEmpty || normalized == "svg" || normalized == "xml" || normalized == "image/svg+xml" else {
+            return false
+        }
+
+        return code.trimmingCharacters(in: .whitespacesAndNewlines).range(
+            of: svgPrefixPattern,
+            options: [.regularExpression, .caseInsensitive]
+        ) != nil
+    }
+
+    static func html(for svg: String) -> String {
+        let jsonSVG = (try? String(
+            data: JSONEncoder().encode(svg),
+            encoding: .utf8
+        ))?.replacingOccurrences(of: "</", with: "<\\/") ?? "\"\""
+
+        return """
+        <!doctype html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <style>
+        html, body { margin: 0; min-height: 100%; background: transparent; color: #1d1d1f; font: 14px -apple-system, BlinkMacSystemFont, sans-serif; }
+        body { box-sizing: border-box; padding: 18px; display: flex; align-items: center; justify-content: center; }
+        #svg-root { width: 100%; min-height: 220px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+        #svg-root > svg { display: block; max-width: 100%; max-height: 520px; width: auto; height: auto; }
+        .error { color: #dc2626; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+        @media (prefers-color-scheme: dark) {
+          html, body { color: #f5f5f7; }
+          .error { color: #ff453a; }
+        }
+        </style>
+        </head>
+        <body>
+        <div id="svg-root"></div>
+        <script>
+        const source = \(jsonSVG);
+        const root = document.getElementById("svg-root");
+        const sendHeight = () => {
+          const height = Math.ceil(Math.max(
+            document.body.scrollHeight,
+            document.documentElement.scrollHeight,
+            root.scrollHeight
+          ));
+          window.webkit?.messageHandlers?.height?.postMessage(height);
+        };
+        try {
+          root.innerHTML = source;
+          requestAnimationFrame(sendHeight);
+        } catch (error) {
+          root.className = "error";
+          root.textContent = error.message || String(error);
+          sendHeight();
+        }
+        window.addEventListener("load", () => setTimeout(sendHeight, 0));
+        </script>
+        </body>
+        </html>
+        """
+    }
+
+    static func suggestedFilename(for svg: String) -> String {
+        "image.svg"
+    }
+
+    @MainActor
+    static func saveSVG(_ svg: String, suggestedFilename: String) throws -> URL? {
+        let panel = NSSavePanel()
+        panel.canCreateDirectories = true
+        panel.isExtensionHidden = false
+        if let svgType = UTType(filenameExtension: "svg") {
+            panel.allowedContentTypes = [svgType]
+        }
+        panel.nameFieldStringValue = suggestedFilename
+
+        guard panel.runModal() == .OK, let url = panel.url else {
+            return nil
+        }
+
+        try svg.write(to: url, atomically: true, encoding: .utf8)
+        return url
+    }
+
+    @MainActor
+    static func presentSaveError(_ error: Error) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "保存 SVG 失败"
+        alert.informativeText = error.localizedDescription
+        alert.runModal()
+    }
+}
+
+private enum SVGPreviewMode: String, CaseIterable {
+    case preview
+    case source
+
+    var title: String {
+        switch self {
+        case .preview:
+            "预览"
+        case .source:
+            "源码"
+        }
+    }
+}
+
+struct SVGBlockView: View {
+    let code: String
+
+    @State private var copied = false
+    @State private var mode: SVGPreviewMode = .preview
+    @State private var previewHeight: CGFloat = 260
+    @State private var saved = false
+
+    private var metadataLabel: String {
+        let lineCount = code.isEmpty ? 0 : code.split(separator: "\n", omittingEmptySubsequences: false).count
+        return "\(max(lineCount, 1)) 行 · \(code.count) 字符"
+    }
+
+    private var previewFrameHeight: CGFloat {
+        min(max(previewHeight, 240), 620)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("SVG")
+                        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text(metadataLabel)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Picker("视图", selection: $mode) {
+                    ForEach(SVGPreviewMode.allCases, id: \.self) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 120)
+
+                toolbarButton(saved ? "已保存" : "下载", systemImage: saved ? "checkmark" : "arrow.down.circle") {
+                    saveSVG()
+                }
+
+                toolbarButton(copied ? "已复制" : "复制", systemImage: copied ? "checkmark" : "doc.on.doc") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(code, forType: .string)
+                    flashCopied()
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(Color.justCodeBackground.opacity(0.6))
+
+            Divider()
+
+            Group {
+                switch mode {
+                case .preview:
+                    HTMLPreviewWebView(html: SVGSupport.html(for: code), measuredHeight: $previewHeight)
+                        .allowsHitTesting(false)
+                        .frame(height: previewFrameHeight)
+                case .source:
+                    ScrollView([.horizontal, .vertical]) {
+                        Text(SyntaxHighlighter.highlight(code: code, language: "xml"))
+                            .textSelection(.enabled)
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(height: 360)
+                    .background(Color.justCodeBackground)
+                }
+            }
+        }
+        .background(Color.justCodeBackground)
+        .overlay(
+            RoundedRectangle(cornerRadius: Radius.md, style: .continuous)
+                .stroke(Color.justBorderSoft, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: Radius.md, style: .continuous))
+        .cardShadow()
+    }
+
+    private func toolbarButton(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 8)
+                .frame(height: 28)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .suppressFocusRing()
+        .hoverSurface(radius: Radius.sm, opacity: 0.55)
+    }
+
+    private func flashCopied() {
+        copied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            copied = false
+        }
+    }
+
+    private func flashSaved() {
+        saved = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            saved = false
+        }
+    }
+
+    @MainActor
+    private func saveSVG() {
+        do {
+            let savedURL = try SVGSupport.saveSVG(
+                code,
+                suggestedFilename: SVGSupport.suggestedFilename(for: code)
+            )
+            if savedURL != nil {
+                flashSaved()
+            }
+        } catch {
+            SVGSupport.presentSaveError(error)
+        }
     }
 }
 

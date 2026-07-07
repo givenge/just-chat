@@ -113,6 +113,7 @@ final class AppState: ObservableObject {
   @Published var preferences: AppPreferences = .default
   @Published var assistantEditorPresented = false
   @Published var displayStreamingMessageIds: Set<UUID> = []
+  @Published var hotKeyRegistrationResults = HotKeyRegistrationResults()
 
   let quickAssistantController = QuickAssistantController()
   let selectionAssistantController = SelectionAssistantController()
@@ -224,9 +225,10 @@ final class AppState: ObservableObject {
     statusMessage = nil
   }
 
-  func startHotKeys() {
+  @discardableResult
+  func startHotKeys() -> HotKeyRegistrationResults {
     hotKeysStarted = true
-    hotKeyCenter.registerHotKeys(
+    let results = hotKeyCenter.registerHotKeys(
       preferences: preferences,
       quick: { [weak self] in
         self?.toggleQuickAssistant()
@@ -235,6 +237,8 @@ final class AppState: ObservableObject {
         self?.toggleSelectionAssistant()
       }
     )
+    hotKeyRegistrationResults = results
+    return results
   }
 
   func selectAssistant(_ assistantId: UUID) {
@@ -242,7 +246,6 @@ final class AppState: ObservableObject {
     selectedAssistantId = assistantId
     let assistant = selectedAssistant
     selectedProviderId = assistant.providerId ?? selectedProviderId
-    isWebSearchEnabled = assistant.isWebSearchEnabled
     ensureConversationForSelectedAssistant()
   }
 
@@ -793,7 +796,7 @@ final class AppState: ObservableObject {
     pendingStreamCharacterCounts[messageId, default: 0] += content.count + reasoning.count
     let now = Date()
     if lastStreamFlushTimes[messageId] == nil
-      || now.timeIntervalSince(lastStreamFlushTimes[messageId] ?? now) >= 0.033
+      || now.timeIntervalSince(lastStreamFlushTimes[messageId] ?? now) >= 0.016
       || (pendingStreamCharacterCounts[messageId] ?? 0) >= 240
     {
       flushStreamBuffers(messageId: messageId, flushDate: now)
@@ -805,7 +808,7 @@ final class AppState: ObservableObject {
   private func scheduleStreamFlush(messageId: UUID) {
     guard streamFlushTasks[messageId] == nil else { return }
     streamFlushTasks[messageId] = Task { [weak self] in
-      try? await Task.sleep(for: .milliseconds(33))
+      try? await Task.sleep(for: .milliseconds(16))
       await MainActor.run {
         self?.flushStreamBuffers(messageId: messageId)
       }
@@ -898,18 +901,6 @@ final class AppState: ObservableObject {
     displayStreamingMessageIds.insert(messageId)
   }
 
-  private func scheduleDisplayStreamingEnd(messageId: UUID, characterCount: Int) {
-    guard displayStreamingMessageIds.contains(messageId) else { return }
-    displayStreamingTasks[messageId]?.cancel()
-    let milliseconds = min(12_000, max(1_200, characterCount * 2))
-    displayStreamingTasks[messageId] = Task { [weak self] in
-      try? await Task.sleep(for: .milliseconds(milliseconds))
-      await MainActor.run {
-        self?.stopDisplayStreaming(messageId: messageId)
-      }
-    }
-  }
-
   private func stopDisplayStreaming(messageId: UUID) {
     displayStreamingTasks[messageId]?.cancel()
     displayStreamingTasks[messageId] = nil
@@ -967,10 +958,7 @@ final class AppState: ObservableObject {
     messages[index].status = .success
     messages[index].updatedAt = Date()
     persistMessageUpdate(messages[index])
-    scheduleDisplayStreamingEnd(
-      messageId: messageId,
-      characterCount: messages[index].content.count + messages[index].reasoningContent.count
-    )
+    stopDisplayStreaming(messageId: messageId)
     cleanupStreamState(messageId: messageId)
     isStreaming = false
     currentTask = nil
@@ -1160,7 +1148,7 @@ final class AppState: ObservableObject {
   private func effectiveWebSearchMode(
     for provider: ModelProvider, assistant: AssistantProfile, messages: [ChatMessage]
   ) -> WebSearchMode {
-    guard isWebSearchEnabled && assistant.isWebSearchEnabled else { return .disabled }
+    guard isWebSearchEnabled else { return .disabled }
     if messages.last(where: { $0.role == .user })?.attachments.isEmpty == false {
       return .disabled
     }
@@ -1237,7 +1225,6 @@ final class AppState: ObservableObject {
 
     selectedAssistantId = assistants[0].id
     selectedProviderId = assistants[0].providerId ?? providers[0].id
-    isWebSearchEnabled = assistants[0].isWebSearchEnabled
 
     conversations = try store.listConversations()
     if conversations.isEmpty {

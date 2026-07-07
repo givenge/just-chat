@@ -103,4 +103,57 @@ final class MarkdownViewTests: XCTestCase {
             2
         )
     }
+
+    func testMermaidDetectionRecognizesMermaidLanguagesOnly() {
+        XCTAssertTrue(MermaidSupport.isMermaid(language: "mermaid"))
+        XCTAssertTrue(MermaidSupport.isMermaid(language: " MMD "))
+        XCTAssertFalse(MermaidSupport.isMermaid(language: "markdown"))
+        XCTAssertFalse(MermaidSupport.isMermaid(language: nil))
+    }
+
+    func testMermaidHTMLDoesNotAllowSourceToCloseScriptTag() {
+        let html = MermaidSupport.html(for: #"flowchart TD; A["</script>"] --> B"#)
+
+        XCTAssertEqual(html.components(separatedBy: "</script>").count, 3)
+        XCTAssertTrue(html.contains(#"<\/script>"#))
+    }
+
+    func testMermaidHTMLReportsRenderedHeight() {
+        let html = MermaidSupport.html(for: "flowchart TD\nA --> B")
+
+        XCTAssertTrue(html.contains("messageHandlers?.height?.postMessage(height)"))
+        XCTAssertTrue(html.contains("requestAnimationFrame(sendHeight)"))
+    }
+
+    func testSVGDetectionRecognizesSVGOnly() {
+        let svg = #"<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4"/></svg>"#
+
+        XCTAssertTrue(SVGSupport.isSVG(language: "svg", code: svg))
+        XCTAssertTrue(SVGSupport.isSVG(language: nil, code: svg))
+        XCTAssertTrue(SVGSupport.isSVG(language: "xml", code: #"<?xml version="1.0"?>\#(svg)"#))
+        XCTAssertFalse(SVGSupport.isSVG(language: "xml", code: "<note></note>"))
+        XCTAssertFalse(SVGSupport.isSVG(language: "html", code: svg))
+    }
+
+    func testSVGHTMLDoesNotAllowSourceToCloseScriptTag() {
+        let html = SVGSupport.html(for: #"<svg><script></script></svg>"#)
+
+        XCTAssertEqual(html.components(separatedBy: "</script>").count, 2)
+        XCTAssertTrue(html.contains(#"<\/script>"#))
+    }
+
+    func testSVGHTMLReportsRenderedHeight() {
+        let html = SVGSupport.html(for: #"<svg viewBox="0 0 10 10"></svg>"#)
+
+        XCTAssertTrue(html.contains("messageHandlers?.height?.postMessage(height)"))
+        XCTAssertTrue(html.contains("requestAnimationFrame(sendHeight)"))
+    }
+
+    func testSVGHTMLCentersPreviewAndConstrainsHeight() {
+        let html = SVGSupport.html(for: #"<svg viewBox="0 0 10 10"></svg>"#)
+
+        XCTAssertTrue(html.contains("justify-content: center"))
+        XCTAssertTrue(html.contains("max-height: 520px"))
+        XCTAssertEqual(SVGSupport.suggestedFilename(for: ""), "image.svg")
+    }
 }

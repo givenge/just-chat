@@ -27,7 +27,7 @@ final class ChatSessionServiceTests: XCTestCase {
     XCTAssertEqual(events, [.delta("hello"), .completed])
   }
 
-  func testTavilyModeDoesNotPreflightWhenModelAnswersWithoutToolCall() async throws {
+  func testTavilyToolProbeDoesNotEmitModelAnswerWithoutToolCall() async throws {
     MockURLProtocol.reset()
     MockURLProtocol.responseData = Data([
       #"data: {"choices":[{"delta":{"content":"hello"},"finish_reason":null}]}"#,
@@ -46,8 +46,16 @@ final class ChatSessionServiceTests: XCTestCase {
     }
 
     let events = await accumulator.events
-    XCTAssertEqual(events, [.delta("hello"), .completed])
+    XCTAssertEqual(events, [.completed])
     XCTAssertEqual(MockURLProtocol.requestBodies.count, 1)
+    let body = try XCTUnwrap(MockURLProtocol.requestBodies.first)
+    let json = try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])
+    let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
+    let timeMessage = try XCTUnwrap(messages.first)
+    XCTAssertEqual(timeMessage["role"] as? String, "system")
+    let content = try XCTUnwrap(timeMessage["content"] as? String)
+    XCTAssertTrue(content.contains("Current date and time:"))
+    XCTAssertTrue(content.contains("Use this as \"today\" and \"now\""))
   }
 }
 
@@ -77,7 +85,7 @@ private final class MockURLProtocol: URLProtocol {
   }
 
   override func startLoading() {
-    Self.requestBodies.append(request.httpBody ?? Data())
+    Self.requestBodies.append(Self.bodyData(from: request))
     client?.urlProtocol(
       self,
       didReceive: HTTPURLResponse(
@@ -93,6 +101,29 @@ private final class MockURLProtocol: URLProtocol {
   }
 
   override func stopLoading() {}
+
+  private static func bodyData(from request: URLRequest) -> Data {
+    if let body = request.httpBody {
+      return body
+    }
+    guard let stream = request.httpBodyStream else {
+      return Data()
+    }
+
+    stream.open()
+    defer { stream.close() }
+
+    var data = Data()
+    var buffer = [UInt8](repeating: 0, count: 4096)
+    while stream.hasBytesAvailable {
+      let count = stream.read(&buffer, maxLength: buffer.count)
+      if count <= 0 {
+        break
+      }
+      data.append(buffer, count: count)
+    }
+    return data
+  }
 }
 
 private func testRequest(webSearchMode: WebSearchMode = .disabled) -> ChatRequest {

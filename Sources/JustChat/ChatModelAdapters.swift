@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 struct SSEEvent: Equatable {
@@ -153,7 +154,7 @@ struct OpenAIChatCompletionsAdapter: ChatModelAdapter {
           "function": [
             "name": "web_search",
             "description":
-              "Search the web for current, recent, or externally verifiable information. Call this only when the answer needs web lookup.",
+              "Search the web for current, recent, real-time, local, or externally verifiable information. Use this before answering questions about current weather, news, prices, schedules, recent events, or facts that may have changed.",
             "parameters": [
               "type": "object",
               "properties": [
@@ -238,10 +239,11 @@ private func messageContent(_ message: ChatMessage) -> [String: Any] {
   }
   var parts: [[String: Any]] = [["type": "text", "text": message.content]]
   for attachment in message.attachments {
-    let base64 = attachment.data.base64EncodedString()
+    let image = modelImagePayload(for: attachment)
+    let base64 = image.data.base64EncodedString()
     parts.append([
       "type": "image_url",
-      "image_url": ["url": "data:\(attachment.mimeType);base64,\(base64)"],
+      "image_url": ["url": "data:\(image.mimeType);base64,\(base64)"],
     ])
   }
   return ["role": message.role.rawValue, "content": parts]
@@ -250,10 +252,11 @@ private func messageContent(_ message: ChatMessage) -> [String: Any] {
 private func responsesContent(_ message: ChatMessage) -> [[String: Any]] {
   var parts: [[String: Any]] = [["type": "input_text", "text": message.content]]
   for attachment in message.attachments {
-    let base64 = attachment.data.base64EncodedString()
+    let image = modelImagePayload(for: attachment)
+    let base64 = image.data.base64EncodedString()
     parts.append([
       "type": "input_image",
-      "image_url": "data:\(attachment.mimeType);base64,\(base64)",
+      "image_url": "data:\(image.mimeType);base64,\(base64)",
     ])
   }
   return parts
@@ -265,17 +268,42 @@ private func anthropicContent(_ message: ChatMessage) -> Any {
   }
   var parts: [[String: Any]] = [["type": "text", "text": message.content]]
   for attachment in message.attachments {
-    let base64 = attachment.data.base64EncodedString()
+    let image = modelImagePayload(for: attachment)
+    let base64 = image.data.base64EncodedString()
     parts.append([
       "type": "image",
       "source": [
         "type": "base64",
-        "media_type": attachment.mimeType,
+        "media_type": image.mimeType,
         "data": base64,
       ],
     ])
   }
   return parts
+}
+
+private struct ModelImagePayload {
+  var mimeType: String
+  var data: Data
+}
+
+private func modelImagePayload(for attachment: MessageImage) -> ModelImagePayload {
+  guard attachment.mimeType.lowercased() == "image/tiff",
+    let image = NSImage(data: attachment.data),
+    let pngData = image.pngData
+  else {
+    return ModelImagePayload(mimeType: attachment.mimeType, data: attachment.data)
+  }
+  return ModelImagePayload(mimeType: "image/png", data: pngData)
+}
+
+private extension NSImage {
+  var pngData: Data? {
+    guard let tiff = tiffRepresentation,
+      let bitmap = NSBitmapImageRep(data: tiff)
+    else { return nil }
+    return bitmap.representation(using: .png, properties: [:])
+  }
 }
 
 private func systemInstructions(for request: ChatRequest) -> String? {
